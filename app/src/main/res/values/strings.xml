@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Talksy</string>
+    <string name="login_title">Welcome to Talksy</string>
+    <string name="login_subtitle">Secure, real-time messaging</string>
+    <string name="continue_with_google">Continue with Google</string>
+    <string name="tab_chats">Chats</string>
+    <string name="tab_status">Status</string>
+    <string name="tab_bots">Bots</string>
+    <string name="tab_profile">Profile</string>
+    <string name="send">Send</string>
+    <string name="search_people">Search people</string>
+    <string name="new_group">New group</string>
+    <string name="new_poll">New poll</string>
+    <string name="logout">Log out</string>
+</resources>
