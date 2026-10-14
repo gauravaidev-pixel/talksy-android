@@ -23,11 +23,6 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Inject config
-        run: |
-          echo "TALKSY_BASE_URL=${{ vars.TALKSY_BASE_URL || 'https://talksy-backend.onrender.com' }}" >> gradle.properties
-          echo "TALKSY_GOOGLE_WEB_CLIENT_ID=${{ secrets.TALKSY_GOOGLE_WEB_CLIENT_ID }}" >> gradle.properties
-
       - name: Print signing SHA-1 (use this in Google Cloud Console)
         run: gradle :app:signingReport --no-daemon
 
