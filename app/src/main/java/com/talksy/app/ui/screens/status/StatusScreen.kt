@@ -47,7 +47,9 @@ class StatusViewModel : ViewModel() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatusScreen(vm: StatusViewModel = viewModel()) {
-    val (loading, statuses) by vm.state.collectAsState()
+    val state by vm.state.collectAsState()
+    val loading = state.first
+    val statuses = state.second
     var composer by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
 

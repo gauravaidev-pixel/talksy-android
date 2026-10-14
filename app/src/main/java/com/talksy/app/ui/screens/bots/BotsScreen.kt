@@ -45,7 +45,9 @@ class BotsViewModel : ViewModel() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BotsScreen(vm: BotsViewModel = viewModel()) {
-    val (loading, bots) by vm.state.collectAsState()
+    val state by vm.state.collectAsState()
+    val loading = state.first
+    val bots = state.second
     var dialog by remember { mutableStateOf(false) }
 
     Scaffold(

@@ -81,7 +81,7 @@ class SocketManager {
             .onSuccess { _messages.tryEmit(it) }
     }
 
-    private fun emitPoll(raw: Any) {
+    private fun emitPoll(raw: Any?) {
         val obj = raw as? JSONObject ?: return
         val chatId = obj.optString("chat_id")
         val pollObj = obj.optJSONObject("poll") ?: return

@@ -39,7 +39,7 @@ class NewGroupViewModel : ViewModel() {
         viewModelScope.launch {
             AppGraph.chats.createGroup(name, description.ifBlank { null }, members.toList())
                 .onSuccess { onDone(it.chat.id) }
-                .onFailure { onError(it.message) }
+                .onFailure { onError(it.message ?: "Could not create group") }
         }
     }
 }
