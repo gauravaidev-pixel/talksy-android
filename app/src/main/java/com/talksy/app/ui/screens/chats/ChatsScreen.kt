@@ -1,17 +1,23 @@
 package com.talksy.app.ui.screens.chats
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,24 +37,34 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel = viewModel()) {
     var menu by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
                 title = { Text("Talksy", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { menu = true }) {
-                        Icon(Icons.Filled.PersonAdd, contentDescription = "New chat")
+                    IconButton(onClick = { nav.navigate(Routes.NEW_CHAT) }) {
+                        Icon(Icons.Filled.Search, contentDescription = "Search")
                     }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("New chat") },
-                            leadingIcon = { Icon(Icons.Filled.PersonAdd, null) },
-                            onClick = { menu = false; nav.navigate(Routes.NEW_CHAT) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("New group") },
-                            leadingIcon = { Icon(Icons.Filled.GroupAdd, null) },
-                            onClick = { menu = false; nav.navigate(Routes.NEW_GROUP) },
-                        )
+                    Box {
+                        IconButton(onClick = { menu = true }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "New")
+                        }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("New chat") },
+                                leadingIcon = { Icon(Icons.Filled.PersonAdd, null) },
+                                onClick = { menu = false; nav.navigate(Routes.NEW_CHAT) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("New group") },
+                                leadingIcon = { Icon(Icons.Filled.GroupAdd, null) },
+                                onClick = { menu = false; nav.navigate(Routes.NEW_GROUP) },
+                            )
+                        }
                     }
                 },
             )
@@ -62,10 +78,13 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel = viewModel()) {
                     "Start a conversation or create a group to get going.",
                     Icons.Filled.Chat,
                 )
-                else -> LazyColumn {
+                else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(state.chats, key = { it.id }) { chat ->
                         ChatRow(chat) { nav.navigate(Routes.chat(chat.id)) }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 84.dp),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        )
                     }
                 }
             }
@@ -75,35 +94,58 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel = viewModel()) {
 
 @Composable
 private fun ChatRow(chat: ChatDto, onClick: () -> Unit) {
-    val title = chat.title.ifBlank { chat.peer?.name ?: "Chat" }
+    val title = chat.title.ifBlank { chat.name.ifBlank { chat.peer?.name ?: "Chat" } }
     val picture = chat.peer?.picture ?: chat.avatar
+    val last = chat.lastMessage
+    val preview = when {
+        last == null -> "Tap to open"
+        last.text.isNotBlank() -> last.text
+        last.imageUrl.isNotBlank() -> "\uD83D\uDCF7 Photo"
+        else -> "Tap to open"
+    }
+
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(title, picture, size = 52.dp, online = chat.peer?.let { false } ?: false)
+        Avatar(title, picture, size = 54.dp, online = chat.peer?.let { false } ?: false)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    Time.short(chat.lastMessage?.createdAt ?: chat.lastMessageAt),
+                    Time.short(last?.createdAt ?: chat.lastMessageAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                chat.lastMessage?.text?.ifBlank { if (chat.lastMessage?.imageUrl?.isNotBlank() == true) "Photo" else "" } ?: "Tap to open",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (chat.type == "group") {
+                    Text(
+                        "\uD83D\uDC65 ",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    preview,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

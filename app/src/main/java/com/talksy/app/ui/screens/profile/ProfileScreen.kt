@@ -2,6 +2,7 @@ package com.talksy.app.ui.screens.profile
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -9,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -47,9 +49,14 @@ fun ProfileScreen(nav: NavController, vm: ProfileViewModel = viewModel()) {
     val current = user
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Profile") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                title = { Text("Profile", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = { nav.navigate(Routes.SETTINGS) }) {
                         Icon(Icons.Filled.Settings, contentDescription = "Settings")
@@ -69,26 +76,51 @@ fun ProfileScreen(nav: NavController, vm: ProfileViewModel = viewModel()) {
                 Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Avatar(current.name, current.picture, size = 96.dp, online = current.isOnline)
-                Spacer(Modifier.height(12.dp))
-                Text(current.name, style = MaterialTheme.typography.titleLarge)
-                Text("@${current.username}", style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Avatar(current.name, current.picture, size = 104.dp, online = current.isOnline)
+                Spacer(Modifier.height(14.dp))
+                Text(current.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    "@${current.username}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(Modifier.height(24.dp))
 
-                OutlinedTextField(value = name, onValueChange = { name = it },
-                    label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(value = username, onValueChange = { username = it },
-                    label = { Text("Username") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(value = bio, onValueChange = { bio = it },
-                    label = { Text("Bio") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 1.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        OutlinedTextField(
+                            value = name, onValueChange = { name = it },
+                            label = { Text("Name") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = username, onValueChange = { username = it },
+                            label = { Text("Username") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = bio, onValueChange = { bio = it },
+                            label = { Text("Bio") },
+                            modifier = Modifier.fillMaxWidth(), maxLines = 3,
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                    }
+                }
                 Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = { vm.save(name, username, bio) },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                ) { Text("Save changes") }
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text("Save changes", fontWeight = FontWeight.SemiBold) }
             }
         }
     }

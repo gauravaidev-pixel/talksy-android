@@ -2,13 +2,13 @@ package com.talksy.app.ui.nav
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.DonutLarge
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,7 +22,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.talksy.app.AppGraph
-import com.talksy.app.ui.screens.bots.BotsScreen
 import com.talksy.app.ui.screens.chat.ChatScreen
 import com.talksy.app.ui.screens.chats.ChatsScreen
 import com.talksy.app.ui.screens.groups.NewGroupScreen
@@ -36,7 +35,6 @@ object Routes {
     const val LOGIN = "login"
     const val CHATS = "chats"
     const val STATUS = "status"
-    const val BOTS = "bots"
     const val PROFILE = "profile"
     const val CHAT = "chat/{chatId}"
     const val NEW_CHAT = "newchat"
@@ -66,7 +64,6 @@ private fun MainShell() {
     val tabs = listOf(
         Tab(Routes.CHATS, "Chats", Icons.Filled.Chat),
         Tab(Routes.STATUS, "Status", Icons.Filled.DonutLarge),
-        Tab(Routes.BOTS, "Bots", Icons.Filled.Bolt),
         Tab(Routes.PROFILE, "Profile", Icons.Filled.Person),
     )
     val backStack by nav.currentBackStackEntryAsState()
@@ -75,7 +72,7 @@ private fun MainShell() {
     Scaffold(
         bottomBar = {
             if (current in tabs.map { it.route }) {
-                NavigationBar {
+                NavigationBar(tonalElevation = 0.dp) {
                     tabs.forEach { tab ->
                         NavigationBarItem(
                             selected = current == tab.route,
@@ -88,6 +85,7 @@ private fun MainShell() {
                             },
                             icon = { Icon(tab.icon, contentDescription = tab.label) },
                             label = { Text(tab.label) },
+                            colors = NavigationBarItemDefaults.colors(),
                         )
                     }
                 }
@@ -101,7 +99,6 @@ private fun MainShell() {
         ) {
             composable(Routes.CHATS) { ChatsScreen(nav) }
             composable(Routes.STATUS) { StatusScreen() }
-            composable(Routes.BOTS) { BotsScreen() }
             composable(Routes.PROFILE) { ProfileScreen(nav) }
             composable(Routes.SETTINGS) { SettingsScreen(nav) }
             composable(Routes.NEW_CHAT) { com.talksy.app.ui.screens.chats.NewChatScreen(nav) }

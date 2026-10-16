@@ -10,15 +10,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.talksy.app.R
-import com.talksy.app.ui.theme.Cyan
-import com.talksy.app.ui.theme.Indigo
-import com.talksy.app.ui.theme.IndigoDark
+import com.talksy.app.ui.theme.Blue
+import com.talksy.app.ui.theme.BlueDeep
+import com.talksy.app.ui.theme.BlueInk
 
 @Composable
 fun LoginScreen(vm: LoginViewModel = viewModel()) {
@@ -28,7 +30,7 @@ fun LoginScreen(vm: LoginViewModel = viewModel()) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(IndigoDark, Indigo, Cyan))),
+            .background(Brush.verticalGradient(listOf(BlueInk, BlueDeep, Blue))),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -44,13 +46,14 @@ fun LoginScreen(vm: LoginViewModel = viewModel()) {
             Text(
                 "Talksy",
                 style = MaterialTheme.typography.headlineMedium,
-                color = androidx.compose.ui.graphics.Color.White,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Secure, real-time messaging",
+                "Fast, secure, real-time messaging",
                 style = MaterialTheme.typography.bodyLarge,
-                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.85f),
+                color = Color.White.copy(alpha = 0.88f),
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(48.dp))
@@ -58,28 +61,35 @@ fun LoginScreen(vm: LoginViewModel = viewModel()) {
             Button(
                 onClick = { vm.signInWithGoogle(context) },
                 enabled = !state.loading,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = androidx.compose.ui.graphics.Color.White,
-                    contentColor = IndigoDark,
+                    containerColor = Color.White,
+                    contentColor = BlueInk,
                 ),
             ) {
                 if (state.loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Indigo)
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Blue)
                 } else {
-                    Text("Continue with Google", style = MaterialTheme.typography.titleMedium)
+                    Text("Continue with Google", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
             }
 
             state.error?.let {
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    it,
-                    color = androidx.compose.ui.graphics.Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                )
+                Spacer(Modifier.height(18.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Black.copy(alpha = 0.22f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        it,
+                        modifier = Modifier.padding(12.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }
