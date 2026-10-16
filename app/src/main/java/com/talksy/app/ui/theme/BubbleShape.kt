@@ -1,12 +1,13 @@
 package com.talksy.app.ui.theme
 
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -32,17 +33,17 @@ class BubbleShape(
         val right = if (tail && isMine) w - tw else w
         val bottom = if (tail) h - th else h
 
-        val body = Path().apply {
-            addRoundRect(
-                RoundRect(
-                    left = left, top = 0f, right = right, bottom = bottom,
-                    topLeft = CornerRadius(r, r),
-                    topRight = CornerRadius(r, r),
-                    bottomLeft = CornerRadius(if (isMine) r else rs, if (isMine) r else rs),
-                    bottomRight = CornerRadius(if (isMine) rs else r, if (isMine) rs else r),
-                )
-            )
+        val bodyShape = RoundedCornerShape(
+            topStart = 16.dp, topEnd = 16.dp,
+            bottomStart = if (isMine) 16.dp else 5.dp,
+            bottomEnd = if (isMine) 5.dp else 16.dp,
+        )
+        val bodySize = Size((right - left).coerceAtLeast(1f), bottom.coerceAtLeast(1f))
+        val bodyLocal = Path().apply {
+            addOutline(bodyShape.createOutline(bodySize, layoutDirection, density))
         }
+        val body = Path().apply { addPath(bodyLocal, Offset(left, 0f)) }
+
         if (!tail) return Outline.Generic(body)
 
         val t = Path().apply {

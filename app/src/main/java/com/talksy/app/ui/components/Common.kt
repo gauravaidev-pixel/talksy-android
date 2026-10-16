@@ -1,6 +1,7 @@
 package com.talksy.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -191,7 +192,7 @@ fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
-    this.then(androidx.compose.foundation.clickable(onClick = onClick))
+    this.clickable(onClick = onClick)
 
 @Composable
 fun LoadingBox(modifier: Modifier = Modifier) {
