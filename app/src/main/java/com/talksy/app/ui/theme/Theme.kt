@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-/** Colours used specifically by the conversation UI. */
+/** Conversation-specific colours. */
 data class ChatColors(
     val chatBackground: Color,
     val incomingBubble: Color,
@@ -22,50 +22,71 @@ data class ChatColors(
     val outgoingBubble: Color,
     val outgoingText: Color,
     val tick: Color,
+    val accent: Color,
+    val onAccent: Color,
+    val panel: Color,
+    val inputBg: Color,
+    val t2: Color,
+    val t3: Color,
+    val badge: Color,
 )
 
-val LightChatColors = ChatColors(
-    chatBackground = LightChatBg,
-    incomingBubble = LightIncoming,
-    incomingText = LightOnSurface,
-    outgoingBubble = LightOutgoing,
-    outgoingText = Color.White,
-    tick = Color(0xFFCDE9FB),
+val NightChatColors = ChatColors(
+    chatBackground = NightBg,
+    incomingBubble = NightIn,
+    incomingText = NightInText,
+    outgoingBubble = NightOut,
+    outgoingText = NightOutText,
+    tick = NightTick,
+    accent = NightAccent,
+    onAccent = NightOnAccent,
+    panel = NightPanel,
+    inputBg = NightInput,
+    t2 = NightT2,
+    t3 = NightT3,
+    badge = NightBadge,
 )
 
-val DarkChatColors = ChatColors(
-    chatBackground = DarkChatBg,
-    incomingBubble = DarkIncoming,
-    incomingText = DarkOnSurface,
-    outgoingBubble = DarkOutgoing,
-    outgoingText = Color(0xFFEAF1F8),
-    tick = Color(0xFF7FB6DD),
+val DayChatColors = ChatColors(
+    chatBackground = DayChat,
+    incomingBubble = DayIn,
+    incomingText = DayInText,
+    outgoingBubble = DayOut,
+    outgoingText = DayOutText,
+    tick = DayTick,
+    accent = DayAccent,
+    onAccent = DayOnAccent,
+    panel = DayPanel,
+    inputBg = DayInput,
+    t2 = DayT2,
+    t3 = DayT3,
+    badge = DayBadge,
 )
 
-val LocalChatColors = staticCompositionLocalOf { LightChatColors }
+val LocalChatColors = staticCompositionLocalOf { NightChatColors }
 
-private val LightScheme = lightColorScheme(
-    primary = Blue, onPrimary = Color.White,
-    secondary = BlueDeep, tertiary = Mint,
-    background = LightBg, onBackground = LightOnSurface,
-    surface = LightSurface, onSurface = LightOnSurface,
-    surfaceVariant = Color(0xFFF1F3F6), onSurfaceVariant = LightMuted,
-    outline = LightOutline, error = Rose,
+private val NightScheme = darkColorScheme(
+    primary = NightAccent, onPrimary = NightOnAccent,
+    secondary = NightAccent, tertiary = Ok,
+    background = NightBg, onBackground = NightT1,
+    surface = NightPanel, onSurface = NightT1,
+    surfaceVariant = NightPanel2, onSurfaceVariant = NightT2,
+    outline = Color(0xFF2A3746), error = Danger,
 )
 
-private val DarkScheme = darkColorScheme(
-    primary = Blue, onPrimary = Color.White,
-    secondary = BlueDeep, tertiary = Mint,
-    background = DarkBg, onBackground = DarkOnSurface,
-    surface = DarkSurface, onSurface = DarkOnSurface,
-    surfaceVariant = DarkSurface, onSurfaceVariant = DarkMuted,
-    outline = DarkOutline, error = Rose,
+private val DayScheme = lightColorScheme(
+    primary = DayAccent, onPrimary = DayOnAccent,
+    secondary = DayAccent, tertiary = Ok,
+    background = DayBg, onBackground = DayT1,
+    surface = DayPanel, onSurface = DayT1,
+    surfaceVariant = DayPanel2, onSurfaceVariant = DayT2,
+    outline = Color(0xFFE3E6E8), error = Danger,
 )
 
 @Composable
 fun TalksyTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    val scheme = if (darkTheme) DarkScheme else LightScheme
-    val chat = if (darkTheme) DarkChatColors else LightChatColors
+    val scheme = if (darkTheme) NightScheme else DayScheme
+    val chat = if (darkTheme) NightChatColors else DayChatColors
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {

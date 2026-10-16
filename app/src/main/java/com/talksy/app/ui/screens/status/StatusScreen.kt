@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -14,7 +13,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -25,6 +23,7 @@ import com.talksy.app.data.remote.dto.StatusDto
 import com.talksy.app.ui.components.Avatar
 import com.talksy.app.ui.components.EmptyState
 import com.talksy.app.ui.components.LoadingBox
+import com.talksy.app.ui.theme.LocalChatColors
 import com.talksy.app.util.Time
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,69 +49,79 @@ class StatusViewModel : ViewModel() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatusScreen(vm: StatusViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val loading = state.first
     val statuses = state.second
+    val chat = LocalChatColors.current
     var composer by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-                title = { Text("Status", fontWeight = FontWeight.Bold) },
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { composer = true }) {
-                Icon(Icons.Filled.Add, contentDescription = "New status")
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 18.dp, end = 8.dp, top = 12.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Status", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             }
-        },
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+
             when {
                 loading -> LoadingBox()
-                statuses.isEmpty() -> EmptyState(
-                    "No status updates",
-                    "Status disappears after 24 hours.",
-                    Icons.Filled.DonutLarge,
-                )
+                statuses.isEmpty() -> EmptyState("No status updates", "Status disappears after 24 hours.", Icons.Filled.DonutLarge)
                 else -> LazyColumn(Modifier.fillMaxSize()) {
-                    items(statuses, key = { it.id }) { s ->
+                    item {
+                        // "My status" add row
                         Row(
-                            Modifier.fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surface)
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            Modifier.fillMaxWidth().clickable { composer = true }.padding(horizontal = 18.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Avatar(s.user.name, s.user.picture, size = 50.dp)
+                            Box(contentAlignment = Alignment.Center) {
+                                Avatar("Me", null, size = 52.dp)
+                                Box(
+                                    Modifier.size(52.dp).padding(2.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(14.dp))
+                            Column {
+                                Text("My status", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Tap to add a status update", style = MaterialTheme.typography.bodyMedium, color = chat.t2)
+                            }
+                        }
+                    }
+                    items(statuses, key = { it.id }) { s ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Avatar(s.user.name, s.user.picture, size = 52.dp, ring = true, ringSeen = s.viewed)
                             Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(s.user.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     s.text.ifBlank { "Photo" },
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = chat.t2,
                                     maxLines = 1,
                                 )
                             }
-                            Text(
-                                Time.short(s.createdAt),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Text(Time.short(s.createdAt), style = MaterialTheme.typography.labelSmall, color = chat.t3)
                         }
-                        HorizontalDivider(modifier = Modifier.padding(start = 80.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                     }
                 }
             }
+        }
+
+        Box(
+            Modifier.align(Alignment.BottomEnd).padding(end = 18.dp, bottom = 18.dp)
+                .size(58.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(chat.accent)
+                .clickable { composer = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = "New status", tint = chat.onAccent, modifier = Modifier.size(26.dp))
         }
     }
 
