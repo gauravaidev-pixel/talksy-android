@@ -73,11 +73,26 @@ interface ApiService {
     @POST("api/status/{id}/view")
     suspend fun viewStatus(@Path("id") statusId: String): SimpleResponse
 
-    @GET("api/bots")
-    suspend fun listBots(): BotListResponse
+    @DELETE("api/status/{id}")
+    suspend fun deleteStatus(@Path("id") statusId: String): SimpleResponse
 
-    @POST("api/bots")
-    suspend fun createBot(@Body body: CreateBotBody): BotResponse
+    @PATCH("api/messages/{id}")
+    suspend fun editMessage(@Path("id") messageId: String, @Body body: EditBody): MessageResponse
+
+    @POST("api/chats/{id}/read")
+    suspend fun markRead(@Path("id") chatId: String): SimpleResponse
+
+    @GET("api/users/{id}")
+    suspend fun getUser(@Path("id") userId: String): MeResponse
+
+    @POST("api/users/{id}/block")
+    suspend fun blockUser(@Path("id") userId: String): SimpleResponse
+
+    @DELETE("api/chats/{id}/members/{uid}")
+    suspend fun removeMember(@Path("id") chatId: String, @Path("uid") userId: String): SimpleResponse
+
+    @POST("api/chats/{id}/invite")
+    suspend fun createInvite(@Path("id") chatId: String, @Body body: InviteBody): InviteResponse
 
     @Multipart
     @POST("api/uploads")

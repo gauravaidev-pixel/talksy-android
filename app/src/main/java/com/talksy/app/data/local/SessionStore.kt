@@ -24,6 +24,7 @@ class SessionStore(private val context: Context) {
         val NAME = stringPreferencesKey("name")
         val USERNAME = stringPreferencesKey("username")
         val PICTURE = stringPreferencesKey("picture")
+        val THEME = stringPreferencesKey("theme")
     }
 
     @Volatile var accessToken: String? = null
@@ -31,6 +32,10 @@ class SessionStore(private val context: Context) {
 
     val isLoggedInFlow: Flow<Boolean> = context.dataStore.data.map { !it[Keys.ACCESS].isNullOrBlank() }
     val userIdFlow: Flow<String?> = context.dataStore.data.map { it[Keys.USER_ID] }
+
+    /** "system" | "light" | "dark" */
+    val themeFlow: Flow<String> = context.dataStore.data.map { it[Keys.THEME] ?: "system" }
+    suspend fun setTheme(mode: String) { context.dataStore.edit { it[Keys.THEME] = mode } }
 
     suspend fun load() {
         accessToken = context.dataStore.data.first()[Keys.ACCESS]
@@ -50,6 +55,10 @@ class SessionStore(private val context: Context) {
 
     suspend fun clear() {
         accessToken = null
-        context.dataStore.edit { it.clear() }
+        // keep the theme choice across logouts
+        context.dataStore.edit {
+            it.remove(Keys.ACCESS); it.remove(Keys.REFRESH); it.remove(Keys.USER_ID)
+            it.remove(Keys.NAME); it.remove(Keys.USERNAME); it.remove(Keys.PICTURE)
+        }
     }
 }

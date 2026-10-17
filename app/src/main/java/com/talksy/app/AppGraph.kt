@@ -15,6 +15,8 @@ object AppGraph {
         private set
     lateinit var socket: SocketManager
         private set
+    lateinit var appContext: Context
+        private set
 
     val auth by lazy { AuthRepository(api) }
     val users by lazy { UserRepository(api) }
@@ -22,10 +24,11 @@ object AppGraph {
     val messages by lazy { MessageRepository(api) }
     val polls by lazy { PollRepository(api) }
     val statuses by lazy { StatusRepository(api) }
-    val bots by lazy { BotRepository(api) }
+    val uploads by lazy { UploadRepository(api, appContext) }
 
     fun init(context: Context) {
         if (::session.isInitialized) return
+        appContext = context.applicationContext
         session = SessionStore(context.applicationContext)
         api = ApiClient.create(session)
         socket = SocketManager()

@@ -9,6 +9,9 @@ data class UserBrief(
     val name: String = "",
     val username: String = "",
     val picture: String = "",
+    @SerialName("is_online") val isOnline: Boolean = false,
+    @SerialName("last_seen") val lastSeen: String? = null,
+    val role: String = "",
 )
 
 @Serializable
@@ -41,6 +44,7 @@ data class MessageDto(
     val reactions: Map<String, List<String>> = emptyMap(),
     @SerialName("is_pinned") val isPinned: Boolean = false,
     @SerialName("view_once") val viewOnce: Boolean = false,
+    @SerialName("is_edited") val isEdited: Boolean = false,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("reply_to") val replyTo: ReplyDto? = null,
 )
@@ -57,6 +61,8 @@ data class ChatDto(
     @SerialName("member_count") val memberCount: Int = 0,
     @SerialName("last_message") val lastMessage: MessageDto? = null,
     @SerialName("last_message_at") val lastMessageAt: String? = null,
+    @SerialName("unread_count") val unreadCount: Int = 0,
+    @SerialName("my_role") val myRole: String? = null,
     val peer: UserBrief? = null,
 )
 
@@ -89,15 +95,6 @@ data class StatusDto(
     @SerialName("is_mine") val isMine: Boolean = false,
 )
 
-@Serializable
-data class BotDto(
-    val id: String,
-    val name: String,
-    val username: String,
-    val description: String = "",
-    @SerialName("created_at") val createdAt: String? = null,
-)
-
 // ---- Response envelopes ----
 @Serializable data class AuthResponse(
     val success: Boolean = false,
@@ -113,8 +110,6 @@ data class BotDto(
 @Serializable data class PollResponse(val success: Boolean = false, val poll: PollDto)
 @Serializable data class PollListResponse(val success: Boolean = false, val polls: List<PollDto> = emptyList())
 @Serializable data class StatusListResponse(val success: Boolean = false, val statuses: List<StatusDto> = emptyList())
-@Serializable data class BotListResponse(val success: Boolean = false, val bots: List<BotDto> = emptyList())
-@Serializable data class BotResponse(val success: Boolean = false, val bot: BotDto)
 @Serializable data class UserListResponse(val success: Boolean = false, val users: List<UserDto> = emptyList())
 @Serializable data class SimpleResponse(val success: Boolean = false, val error: String? = null, val code: String? = null)
 @Serializable data class UploadResponse(val success: Boolean = false, val url: String = "", val error: String? = null)
@@ -146,8 +141,10 @@ data class BotDto(
 )
 @Serializable data class VoteBody(@SerialName("option_index") val optionIndex: Int)
 @Serializable data class StatusBody(val text: String? = null, @SerialName("image_url") val imageUrl: String? = null)
-@Serializable data class CreateBotBody(
-    val name: String, val username: String,
-    val description: String? = null, @SerialName("webhook_url") val webhookUrl: String? = null,
-)
 @Serializable data class ReactionBody(val emoji: String)
+@Serializable data class EditBody(val text: String)
+@Serializable data class InviteBody(
+    @SerialName("expire_hours") val expireHours: Int = 0,
+    @SerialName("max_uses") val maxUses: Int = 0,
+)
+@Serializable data class InviteResponse(val success: Boolean = false, val code: String = "")

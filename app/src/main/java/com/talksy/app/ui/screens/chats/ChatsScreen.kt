@@ -2,186 +2,266 @@ package com.talksy.app.ui.screens.chats
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.talksy.app.data.remote.dto.ChatDto
 import com.talksy.app.ui.components.Avatar
 import com.talksy.app.ui.components.EmptyState
-import com.talksy.app.ui.components.FilterChip
 import com.talksy.app.ui.components.LoadingBox
-import com.talksy.app.ui.components.SearchPill
+import com.talksy.app.ui.components.UnreadBadge
 import com.talksy.app.ui.nav.Routes
-import com.talksy.app.ui.theme.LocalChatColors
 import com.talksy.app.util.Time
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatsScreen(nav: NavController, vm: ChatsViewModel = viewModel()) {
+fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
     val state by vm.state.collectAsState()
-    val chat = LocalChatColors.current
-    var query by remember { mutableStateOf("") }
-    var filter by remember { mutableStateOf("All") }
-    var menu by remember { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var filter by rememberSaveable { mutableStateOf(0) } // 0 all, 1 unread, 2 groups
+    var fabOpen by remember { mutableStateOf(false) }
 
-    val visible = state.chats.filter { c ->
-        val title = c.title.ifBlank { c.name.ifBlank { c.peer?.name ?: "" } }
-        val matchesQuery = query.isBlank() || title.contains(query, true) ||
-            (c.lastMessage?.text?.contains(query, true) ?: false)
-        val matchesFilter = when (filter) {
-            "Groups" -> c.type == "group"
-            "Direct" -> c.type != "group"
+    // Refresh whenever we come back to this screen.
+    LaunchedEffect(Unit) { vm.refresh(silent = true) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refresh(silent = true)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val unreadChats = state.chats.count { it.unreadCount > 0 }
+    val visible = state.chats.filter { chat ->
+        val title = chat.title.ifBlank { chat.peer?.name ?: chat.name }
+        val matches = query.isBlank() || title.contains(query.trim(), ignoreCase = true)
+        val passes = when (filter) {
+            1 -> chat.unreadCount > 0
+            2 -> chat.type == "group"
             else -> true
         }
-        matchesQuery && matchesFilter
+        matches && passes
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxSize()) {
-            // header
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            // ---- top bar
             Row(
-                Modifier.fillMaxWidth().padding(start = 18.dp, end = 8.dp, top = 12.dp, bottom = 4.dp),
+                Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Talksy", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(onClick = { }) {
-                    Icon(Icons.Filled.Search, contentDescription = "Search", tint = chat.t2)
-                }
-                Box {
-                    IconButton(onClick = { menu = true }) {
-                        Icon(Icons.Filled.Edit, contentDescription = "New", tint = chat.t2)
+                if (searching) {
+                    IconButton(onClick = { searching = false; query = "" }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Close search")
                     }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("New chat") },
-                            leadingIcon = { Icon(Icons.Filled.PersonAdd, null) },
-                            onClick = { menu = false; nav.navigate(Routes.NEW_CHAT) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("New group") },
-                            leadingIcon = { Icon(Icons.Filled.GroupAdd, null) },
-                            onClick = { menu = false; nav.navigate(Routes.NEW_GROUP) },
-                        )
+                    TextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Search chats") },
+                        singleLine = true,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                        ),
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, contentDescription = "Clear") }
+                            }
+                        },
+                    )
+                } else {
+                    Text(
+                        "Talksy",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f).padding(start = 12.dp),
+                    )
+                    IconButton(onClick = { searching = true }) {
+                        Icon(Icons.Filled.Search, contentDescription = "Search")
                     }
                 }
             }
 
-            SearchPill(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = "Search chats and people",
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-            )
-
+            // ---- filter chips
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                listOf("All", "Groups", "Direct").forEach { f ->
-                    FilterChip(label = f, selected = filter == f) { filter = f }
-                }
+                FilterPill("All", filter == 0) { filter = 0 }
+                FilterPill(if (unreadChats > 0) "Unread $unreadChats" else "Unread", filter == 1) { filter = 1 }
+                FilterPill("Groups", filter == 2) { filter = 2 }
             }
+            Spacer(Modifier.height(4.dp))
 
-            Box(Modifier.weight(1f)) {
+            // ---- list
+            Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     state.loading -> LoadingBox()
                     visible.isEmpty() -> EmptyState(
-                        "No chats yet",
-                        "Start a conversation or create a group to get going.",
-                        Icons.Filled.Chat,
+                        title = if (state.chats.isEmpty()) "No chats yet" else "Nothing here",
+                        subtitle = if (state.chats.isEmpty()) "Tap the pencil button to start a conversation."
+                        else "No chats match your search or filter.",
+                        icon = Icons.Filled.ChatBubble,
                     )
-                    else -> LazyColumn(Modifier.fillMaxSize()) {
-                        items(visible, key = { it.id }) { c ->
-                            ChatRow(c, chat.t2, chat.t3) { nav.navigate(Routes.chat(c.id)) }
+                    else -> LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+                        items(visible, key = { it.id }) { chat ->
+                            val peerId = chat.peer?.id
+                            val online = peerId?.let { state.presence[it] ?: chat.peer?.isOnline } ?: false
+                            ChatRow(chat, state.myId, online) { nav.navigate(Routes.chat(chat.id)) }
                         }
-                        item { Spacer(Modifier.height(90.dp)) }
                     }
                 }
             }
         }
 
-        // FAB
-        Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 18.dp, bottom = 18.dp)
-                .size(58.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .background(chat.accent)
-                .clickable { nav.navigate(Routes.NEW_CHAT) },
-            contentAlignment = Alignment.Center,
+        // ---- speed-dial FAB
+        if (fabOpen) {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)).clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { fabOpen = false },
+            )
+        }
+        Column(
+            Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(Icons.Filled.Edit, contentDescription = "New chat", tint = chat.onAccent, modifier = Modifier.size(26.dp))
+            if (fabOpen) {
+                ExtendedFloatingActionButton(
+                    onClick = { fabOpen = false; nav.navigate(Routes.NEW_GROUP) },
+                    icon = { Icon(Icons.Filled.GroupAdd, contentDescription = null) },
+                    text = { Text("New group") },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                )
+                ExtendedFloatingActionButton(
+                    onClick = { fabOpen = false; nav.navigate(Routes.NEW_CHAT) },
+                    icon = { Icon(Icons.Filled.PersonAdd, contentDescription = null) },
+                    text = { Text("New chat") },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                )
+            }
+            FloatingActionButton(
+                onClick = { fabOpen = !fabOpen },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(18.dp),
+            ) {
+                Icon(if (fabOpen) Icons.Filled.Close else Icons.Filled.Edit, contentDescription = "New")
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ChatRow(chatDto: ChatDto, t2: androidx.compose.ui.graphics.Color, t3: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
-    val title = chatDto.title.ifBlank { chatDto.name.ifBlank { chatDto.peer?.name ?: "Chat" } }
-    val picture = chatDto.peer?.picture ?: chatDto.avatar
-    val last = chatDto.lastMessage
-    val preview = when {
-        last == null -> "Tap to open"
-        last.text.isNotBlank() -> last.text
-        last.imageUrl.isNotBlank() -> "\uD83D\uDCF7 Photo"
-        else -> "Tap to open"
+private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
+}
+
+@Composable
+private fun ChatRow(chat: ChatDto, myId: String, online: Boolean, onClick: () -> Unit) {
+    val isGroup = chat.type == "group"
+    val title = chat.title.ifBlank { chat.peer?.name ?: chat.name.ifBlank { "Chat" } }
+    val picture = if (isGroup) chat.avatar else chat.peer?.picture
+    val last = chat.lastMessage
+    val unread = chat.unreadCount
+
+    val preview = when {
+        last == null -> if (isGroup) "Group created" else "Say hi \uD83D\uDC4B"
+        else -> {
+            val body = when {
+                last.text.isNotBlank() -> last.text
+                last.imageUrl.isNotBlank() -> "\uD83D\uDCF7 Photo"
+                last.kind == "poll" -> "\uD83D\uDCCA Poll"
+                else -> ""
+            }
+            val prefix = when {
+                last.sender.id == myId -> "You: "
+                isGroup -> last.sender.name.substringBefore(' ') + ": "
+                else -> ""
+            }
+            prefix + body
+        }
+    }
+
     Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(title, picture, size = 54.dp)
-        Spacer(Modifier.width(12.dp))
+        Avatar(title, picture, size = 56.dp, online = online && !isGroup, icon = if (isGroup && picture.isNullOrBlank()) Icons.Filled.Group else null)
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    Time.short(last?.createdAt ?: chatDto.lastMessageAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = t3,
+                    Time.listLabel(last?.createdAt ?: chat.lastMessageAt),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (unread > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (chatDto.type == "group") {
-                    Text("\uD83D\uDC65 ", style = MaterialTheme.typography.bodyMedium, color = t2)
-                }
                 Text(
                     preview,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = t2,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (unread > 0) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
+                if (unread > 0) {
+                    Spacer(Modifier.width(8.dp))
+                    UnreadBadge(unread)
+                }
             }
         }
     }

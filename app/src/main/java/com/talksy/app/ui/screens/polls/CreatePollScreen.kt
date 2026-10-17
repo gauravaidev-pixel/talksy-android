@@ -3,7 +3,6 @@ package com.talksy.app.ui.screens.polls
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -11,7 +10,6 @@ import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -35,14 +33,9 @@ fun CreatePollScreen(nav: NavController, chatId: String, vm: CreatePollViewModel
     val options = remember { mutableStateListOf("", "") }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-                title = { Text("New poll", fontWeight = FontWeight.Bold) },
+                title = { Text("New poll") },
                 navigationIcon = {
                     IconButton(onClick = { nav.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -56,7 +49,7 @@ fun CreatePollScreen(nav: NavController, chatId: String, vm: CreatePollViewModel
                                 nav.popBackStack()
                             }
                         },
-                    ) { Text("Create", fontWeight = FontWeight.SemiBold) }
+                    ) { Text("Create") }
                 },
             )
         },
@@ -67,7 +60,6 @@ fun CreatePollScreen(nav: NavController, chatId: String, vm: CreatePollViewModel
                 label = { Text("Question") },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 maxLines = 3,
-                shape = RoundedCornerShape(14.dp),
             )
             LazyColumn(Modifier.weight(1f)) {
                 itemsIndexed(options) { index, value ->
@@ -78,7 +70,6 @@ fun CreatePollScreen(nav: NavController, chatId: String, vm: CreatePollViewModel
                             label = { Text("Option ${index + 1}") },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
                         )
                         if (options.size > 2) {
                             IconButton(onClick = { options.removeAt(index) }) {

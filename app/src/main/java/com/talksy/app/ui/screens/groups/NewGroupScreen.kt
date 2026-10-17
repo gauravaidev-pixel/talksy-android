@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
@@ -12,7 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -57,14 +55,9 @@ fun NewGroupScreen(nav: NavController, vm: NewGroupViewModel = viewModel()) {
     var error by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-                title = { Text("New group", fontWeight = FontWeight.Bold) },
+                title = { Text("New group") },
                 navigationIcon = {
                     IconButton(onClick = { nav.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -78,7 +71,7 @@ fun NewGroupScreen(nav: NavController, vm: NewGroupViewModel = viewModel()) {
                                 onDone = { nav.navigate(Routes.chat(it)) { popUpTo(Routes.NEW_GROUP) { inclusive = true } } },
                                 onError = { error = it })
                         },
-                    ) { Text("Create", fontWeight = FontWeight.SemiBold) }
+                    ) { Text("Create") }
                 },
             )
         },
@@ -89,18 +82,16 @@ fun NewGroupScreen(nav: NavController, vm: NewGroupViewModel = viewModel()) {
                 label = { Text("Group name") },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
             )
             OutlinedTextField(
                 value = description, onValueChange = { description = it },
                 label = { Text("Description (optional)") },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
             )
             if (selected.isNotEmpty()) {
                 Text(
-                    "Selected: " + selected.joinToString { it.name },
+                    "Selected: ${selected.joinToString { it.name }}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -113,7 +104,6 @@ fun NewGroupScreen(nav: NavController, vm: NewGroupViewModel = viewModel()) {
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 singleLine = true,
-                shape = RoundedCornerShape(14.dp),
             )
             LazyColumn {
                 items(results, key = { it.id }) { user ->
@@ -126,7 +116,7 @@ fun NewGroupScreen(nav: NavController, vm: NewGroupViewModel = viewModel()) {
                     ) {
                         Checkbox(checked = isSelected, onCheckedChange = null)
                         Spacer(Modifier.width(8.dp))
-                        Avatar(user.name, user.picture, size = 42.dp)
+                        Avatar(user.name, user.picture, size = 40.dp)
                         Spacer(Modifier.width(12.dp))
                         Text(user.name, style = MaterialTheme.typography.titleMedium)
                     }

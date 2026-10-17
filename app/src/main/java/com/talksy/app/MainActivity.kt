@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.talksy.app.ui.nav.RootNav
 import com.talksy.app.ui.theme.TalksyTheme
 
@@ -12,7 +14,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            TalksyTheme {
+            val mode by AppGraph.session.themeFlow.collectAsState(initial = "system")
+            TalksyTheme(mode) {
                 RootNav()
             }
         }
