@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.talksy.app.AppGraph
+import com.talksy.app.data.local.ChatPrefs
 import com.talksy.app.data.remote.dto.ChatDto
 import com.talksy.app.data.remote.dto.MessageDto
 import com.talksy.app.data.remote.dto.PollDto
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.UUID
 
 /** A message the user just sent that the server hasn't confirmed yet (shown with a clock icon). */
@@ -42,6 +44,10 @@ data class ChatUiState(
     val uploading: Boolean = false,
     val hasMore: Boolean = false,
     val loadingMore: Boolean = false,
+    val disappear: String = "off",
+    val searchResults: List<MessageDto>? = null,
+    val typingName: String? = null,
+    val sendingVoice: Boolean = false,
     val toast: String? = null,
 )
 
@@ -60,29 +66,60 @@ class ChatViewModel : ViewModel() {
         if (chatId == id) return
         chatId = id
         viewModelScope.launch { _state.update { it.copy(myId = AppGraph.session.userIdFlow.first() ?: "") } }
+        _state.update { it.copy(disappear = ChatPrefs.disappear(AppGraph.appContext, id)) }
         load()
         observeRealtime()
     }
 
     private fun load() {
+        // 1) Paint instantly from memory (header from the chat list, last messages from the previous visit).
+        val cachedChat = AppGraph.chatCache[chatId]
+        val cachedMessages = AppGraph.messageCache[chatId]
+            ?: AppGraph.disk.loadMessages(chatId)?.also { AppGraph.messageCache[chatId] = it }
+        _state.update {
+            it.copy(
+                chat = cachedChat ?: it.chat,
+                messages = cachedMessages ?: it.messages,
+                loading = cachedMessages == null,
+                peerOnline = cachedChat?.peer?.isOnline ?: it.peerOnline,
+                peerLastSeen = cachedChat?.peer?.lastSeen ?: it.peerLastSeen,
+            )
+        }
+
+        // 2) Refresh in parallel. Each request updates the UI as soon as it lands
+        //    (before: chat -> messages -> polls ran one after another and blocked the screen).
         viewModelScope.launch {
-            _state.update { it.copy(loading = true) }
-            val chat = AppGraph.chats.get(chatId).getOrNull()?.chat
-            val messages = AppGraph.messages.list(chatId).getOrNull()?.messages ?: emptyList()
-            val polls = AppGraph.polls.list(chatId).getOrNull()?.polls ?: emptyList()
-            _state.update {
-                it.copy(
-                    loading = false,
-                    chat = chat,
-                    messages = messages,
-                    polls = polls.associateBy { p -> p.id },
-                    hasMore = messages.size >= PAGE,
-                    peerOnline = chat?.peer?.isOnline ?: false,
-                    peerLastSeen = chat?.peer?.lastSeen,
-                )
+            AppGraph.messages.list(chatId)
+                .onSuccess { res ->
+                    AppGraph.messageCache[chatId] = res.messages
+                    AppGraph.disk.saveMessages(chatId, res.messages)
+                    _state.update { it.copy(loading = false, messages = res.messages, hasMore = res.messages.size >= PAGE) }
+                    AppGraph.socket.joinChat(chatId)
+                    markRead()
+                    // polls are only needed when the chat actually contains one
+                    if (res.messages.any { m -> m.kind == "poll" }) loadPolls()
+                }
+                .onFailure { e -> _state.update { it.copy(loading = false, toast = e.message) } }
+        }
+        viewModelScope.launch {
+            AppGraph.chats.get(chatId).onSuccess { res ->
+                AppGraph.chatCache[chatId] = res.chat
+                _state.update {
+                    it.copy(
+                        chat = res.chat,
+                        peerOnline = res.chat.peer?.isOnline ?: false,
+                        peerLastSeen = res.chat.peer?.lastSeen,
+                    )
+                }
             }
-            AppGraph.socket.joinChat(chatId)
-            markRead()
+        }
+    }
+
+    private fun loadPolls() {
+        viewModelScope.launch {
+            AppGraph.polls.list(chatId).onSuccess { res ->
+                _state.update { it.copy(polls = res.polls.associateBy { p -> p.id } + it.polls) }
+            }
         }
     }
 
@@ -141,12 +178,23 @@ class ChatViewModel : ViewModel() {
             AppGraph.socket.typing.collect { ev ->
                 if (ev.chatId == chatId && ev.userId != _state.value.myId) {
                     typingClear?.cancel()
-                    _state.update { it.copy(typing = ev.isTyping) }
+                    val who = _state.value.chat?.members?.firstOrNull { it.id == ev.userId }?.name?.substringBefore(' ')
+                    _state.update { it.copy(typing = ev.isTyping, typingName = if (ev.isTyping) who else null) }
                     if (ev.isTyping) {
                         typingClear = launch {
                             delay(3500)
-                            _state.update { it.copy(typing = false) }
+                            _state.update { it.copy(typing = false, typingName = null) }
                         }
+                    }
+                }
+            }
+        }
+        // the other person opened the chat -> all my messages become "seen" (double tick)
+        viewModelScope.launch {
+            AppGraph.socket.reads.collect { ev ->
+                if (ev.chatId == chatId && ev.userId != _state.value.myId && _state.value.chat?.type == "direct") {
+                    _state.update { st ->
+                        st.copy(messages = st.messages.map { if (it.sender.id == st.myId && !it.isSeen) it.copy(isSeen = true) else it })
                     }
                 }
             }
@@ -206,7 +254,7 @@ class ChatViewModel : ViewModel() {
 
     private fun dispatch(local: PendingMessage, replyToId: String?) {
         viewModelScope.launch {
-            AppGraph.messages.send(chatId, local.text.ifBlank { null }, local.imageUrl.ifBlank { null }, replyToId, false)
+            AppGraph.messages.send(chatId, local.text.ifBlank { null }, local.imageUrl.ifBlank { null }, replyToId, false, autoDeleteValue())
                 .onSuccess { res ->
                     _state.update { st ->
                         st.copy(
@@ -303,6 +351,92 @@ class ChatViewModel : ViewModel() {
             AppGraph.polls.vote(pollId, index)
                 .onSuccess { res -> _state.update { it.copy(polls = it.polls + (res.poll.id to res.poll)) } }
                 .onFailure { e -> _state.update { it.copy(toast = e.message) } }
+        }
+    }
+
+    // ---------------------------------------------------------------- extra features
+
+    private fun autoDeleteValue(): String = _state.value.disappear.let { if (it == "off") "never" else it }
+
+    fun setDisappear(value: String) {
+        ChatPrefs.setDisappear(AppGraph.appContext, chatId, value)
+        _state.update { it.copy(disappear = value, toast = if (value == "off") "Disappearing messages off" else "New messages will disappear") }
+    }
+
+    /** Send an existing message to other chats. */
+    fun forward(m: MessageDto, targetChatIds: List<String>) {
+        viewModelScope.launch {
+            var failed = 0
+            targetChatIds.forEach { id ->
+                AppGraph.messages.send(id, m.text.ifBlank { null }, m.imageUrl.ifBlank { null }, null, false)
+                    .onFailure { failed++ }
+            }
+            _state.update { it.copy(toast = if (failed == 0) "Forwarded" else "Could not forward to $failed chat(s)") }
+        }
+    }
+
+    fun report(m: MessageDto, reason: String) {
+        viewModelScope.launch {
+            AppGraph.messages.report(m.id, reason)
+                .onSuccess { _state.update { it.copy(toast = "Reported. Thanks!") } }
+                .onFailure { e -> _state.update { it.copy(toast = e.message) } }
+        }
+    }
+
+    fun search(q: String) {
+        if (q.trim().length < 2) {
+            _state.update { it.copy(searchResults = null) }
+            return
+        }
+        viewModelScope.launch {
+            AppGraph.messages.search(chatId, q.trim())
+                .onSuccess { res -> _state.update { it.copy(searchResults = res.messages) } }
+        }
+    }
+
+    fun clearSearch() = _state.update { it.copy(searchResults = null) }
+
+    fun toggleMute() {
+        val muted = _state.value.chat?.isMuted == true
+        viewModelScope.launch {
+            AppGraph.chats.mute(chatId, if (muted) 0 else 8)
+            AppGraph.chats.get(chatId).onSuccess { res ->
+                AppGraph.chatCache[chatId] = res.chat
+                _state.update { it.copy(chat = res.chat, toast = if (muted) "Unmuted" else "Muted for 8 hours") }
+            }
+        }
+    }
+
+    fun clearHistory() {
+        viewModelScope.launch {
+            AppGraph.chats.clear(chatId)
+                .onSuccess {
+                    AppGraph.messageCache.remove(chatId)
+                    _state.update { it.copy(messages = emptyList(), pending = emptyList(), toast = "History cleared") }
+                }
+                .onFailure { e -> _state.update { it.copy(toast = e.message) } }
+        }
+    }
+
+    /** Upload a recorded voice file and send it as a voice message. */
+    fun sendVoice(file: File, seconds: Int) {
+        _state.update { it.copy(sendingVoice = true) }
+        viewModelScope.launch {
+            AppGraph.uploads.voice(file)
+                .onSuccess { url ->
+                    AppGraph.messages.send(chatId, "[Voice ${seconds}s]", url, null, false, autoDeleteValue())
+                        .onSuccess { res ->
+                            _state.update { st ->
+                                st.copy(
+                                    sendingVoice = false,
+                                    messages = if (st.messages.any { it.id == res.message.id }) st.messages else st.messages + res.message,
+                                )
+                            }
+                        }
+                        .onFailure { e -> _state.update { it.copy(sendingVoice = false, toast = e.message) } }
+                }
+                .onFailure { e -> _state.update { it.copy(sendingVoice = false, toast = e.message) } }
+            file.delete()
         }
     }
 

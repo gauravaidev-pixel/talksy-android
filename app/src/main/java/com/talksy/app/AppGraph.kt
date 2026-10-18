@@ -17,6 +17,18 @@ object AppGraph {
         private set
     lateinit var appContext: Context
         private set
+    lateinit var disk: com.talksy.app.data.local.DiskCache
+        private set
+
+    /** In-memory caches so a chat can paint instantly while fresh data loads (stale-while-revalidate). */
+    val chatCache = java.util.concurrent.ConcurrentHashMap<String, com.talksy.app.data.remote.dto.ChatDto>()
+    val messageCache = java.util.concurrent.ConcurrentHashMap<String, List<com.talksy.app.data.remote.dto.MessageDto>>()
+
+    fun clearCaches() {
+        chatCache.clear()
+        messageCache.clear()
+        disk.clear()
+    }
 
     val auth by lazy { AuthRepository(api) }
     val users by lazy { UserRepository(api) }
@@ -29,6 +41,7 @@ object AppGraph {
     fun init(context: Context) {
         if (::session.isInitialized) return
         appContext = context.applicationContext
+        disk = com.talksy.app.data.local.DiskCache(context.applicationContext)
         session = SessionStore(context.applicationContext)
         api = ApiClient.create(session)
         socket = SocketManager()

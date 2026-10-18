@@ -45,6 +45,8 @@ data class MessageDto(
     @SerialName("is_pinned") val isPinned: Boolean = false,
     @SerialName("view_once") val viewOnce: Boolean = false,
     @SerialName("is_edited") val isEdited: Boolean = false,
+    @SerialName("is_seen") val isSeen: Boolean = false,
+    @SerialName("expires_at") val expiresAt: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("reply_to") val replyTo: ReplyDto? = null,
 )
@@ -63,6 +65,8 @@ data class ChatDto(
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     @SerialName("unread_count") val unreadCount: Int = 0,
     @SerialName("my_role") val myRole: String? = null,
+    @SerialName("is_pinned") val isPinned: Boolean = false,
+    @SerialName("is_muted") val isMuted: Boolean = false,
     val peer: UserBrief? = null,
 )
 
@@ -93,6 +97,7 @@ data class StatusDto(
     @SerialName("expires_at") val expiresAt: String? = null,
     val viewed: Boolean = false,
     @SerialName("is_mine") val isMine: Boolean = false,
+    @SerialName("view_count") val viewCount: Int = 0,
 )
 
 // ---- Response envelopes ----
@@ -112,7 +117,7 @@ data class StatusDto(
 @Serializable data class StatusListResponse(val success: Boolean = false, val statuses: List<StatusDto> = emptyList())
 @Serializable data class UserListResponse(val success: Boolean = false, val users: List<UserDto> = emptyList())
 @Serializable data class SimpleResponse(val success: Boolean = false, val error: String? = null, val code: String? = null)
-@Serializable data class UploadResponse(val success: Boolean = false, val url: String = "", val error: String? = null)
+@Serializable data class UploadResponse(val success: Boolean = false, val url: String = "", val kind: String = "", val error: String? = null)
 
 // ---- Request bodies ----
 @Serializable data class GoogleLoginBody(@SerialName("id_token") val idToken: String)
@@ -148,3 +153,17 @@ data class StatusDto(
     @SerialName("max_uses") val maxUses: Int = 0,
 )
 @Serializable data class InviteResponse(val success: Boolean = false, val code: String = "")
+
+@Serializable data class ChatSettingsBody(
+    val pinned: Boolean? = null,
+    @SerialName("mute_hours") val muteHours: Int? = null,
+)
+@Serializable data class ReportBody(val reason: String)
+@Serializable data class EditChatBody(val name: String? = null, val description: String? = null, val avatar: String? = null)
+@Serializable data class AddMembersBody(@SerialName("member_ids") val memberIds: List<String>)
+@Serializable data class RoleBody(val role: String)
+@Serializable data class StatusViewerDto(
+    val user: UserBrief,
+    @SerialName("viewed_at") val viewedAt: String? = null,
+)
+@Serializable data class StatusViewersResponse(val success: Boolean = false, val viewers: List<StatusViewerDto> = emptyList())

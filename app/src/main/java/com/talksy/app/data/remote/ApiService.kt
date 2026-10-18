@@ -38,6 +38,7 @@ interface ApiService {
         @Path("id") chatId: String,
         @Query("limit") limit: Int = 50,
         @Query("before") before: String? = null,
+        @Query("peek") peek: Int? = null,
     ): MessagesResponse
 
     @POST("api/chats/{id}/messages")
@@ -90,6 +91,45 @@ interface ApiService {
 
     @DELETE("api/chats/{id}/members/{uid}")
     suspend fun removeMember(@Path("id") chatId: String, @Path("uid") userId: String): SimpleResponse
+
+    @POST("api/chats/saved")
+    suspend fun openSaved(): ChatResponse
+
+    @PATCH("api/chats/{id}/settings")
+    suspend fun chatSettings(@Path("id") chatId: String, @Body body: ChatSettingsBody): SimpleResponse
+
+    @POST("api/chats/{id}/clear")
+    suspend fun clearChat(@Path("id") chatId: String): SimpleResponse
+
+    @POST("api/chats/{id}/hide")
+    suspend fun hideChat(@Path("id") chatId: String): SimpleResponse
+
+    @GET("api/chats/{id}/search")
+    suspend fun searchMessages(@Path("id") chatId: String, @Query("q") query: String): MessagesResponse
+
+    @POST("api/messages/{id}/report")
+    suspend fun reportMessage(@Path("id") messageId: String, @Body body: ReportBody): SimpleResponse
+
+    @GET("api/users/blocked")
+    suspend fun blockedUsers(): UserListResponse
+
+    @PATCH("api/chats/{id}")
+    suspend fun editChat(@Path("id") chatId: String, @Body body: EditChatBody): ChatResponse
+
+    @DELETE("api/chats/{id}")
+    suspend fun deleteChat(@Path("id") chatId: String): SimpleResponse
+
+    @POST("api/chats/{id}/members")
+    suspend fun addMembers(@Path("id") chatId: String, @Body body: AddMembersBody): SimpleResponse
+
+    @PATCH("api/chats/{id}/members/{uid}")
+    suspend fun setRole(@Path("id") chatId: String, @Path("uid") userId: String, @Body body: RoleBody): SimpleResponse
+
+    @POST("api/chats/join/{code}")
+    suspend fun joinByCode(@Path("code") code: String): ChatResponse
+
+    @GET("api/status/{id}/viewers")
+    suspend fun statusViewers(@Path("id") statusId: String): StatusViewersResponse
 
     @POST("api/chats/{id}/invite")
     suspend fun createInvite(@Path("id") chatId: String, @Body body: InviteBody): InviteResponse

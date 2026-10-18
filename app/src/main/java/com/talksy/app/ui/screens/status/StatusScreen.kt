@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DonutLarge
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -43,6 +44,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.talksy.app.AppGraph
 import com.talksy.app.data.remote.dto.StatusDto
+import com.talksy.app.data.remote.dto.StatusViewerDto
 import com.talksy.app.ui.components.Avatar
 import com.talksy.app.ui.components.EmptyState
 import com.talksy.app.ui.components.LoadingBox
@@ -106,6 +108,12 @@ class StatusViewModel : ViewModel() {
         }
     }
 
+    fun loadViewers(id: String, onResult: (List<StatusViewerDto>) -> Unit) {
+        viewModelScope.launch {
+            AppGraph.statuses.viewers(id).onSuccess { onResult(it.viewers) }
+        }
+    }
+
     fun consumeMessage() = _state.update { it.copy(message = null) }
 }
 
@@ -130,6 +138,7 @@ fun StatusScreen(vm: StatusViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     var composing by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<List<StatusDto>?>(null) }
+    var viewers by remember { mutableStateOf<List<StatusViewerDto>?>(null) }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { vm.refresh() }
@@ -212,7 +221,34 @@ fun StatusScreen(vm: StatusViewModel = viewModel()) {
             statuses = list,
             onViewed = vm::markViewed,
             onDelete = { vm.delete(it); viewing = null },
+            onShowViewers = { id -> vm.loadViewers(id) { viewers = it } },
             onClose = { viewing = null; vm.refresh() },
+        )
+    }
+
+    viewers?.let { list ->
+        AlertDialog(
+            onDismissRequest = { viewers = null },
+            title = { Text("Viewed by ${list.size}") },
+            text = {
+                if (list.isEmpty()) {
+                    Text("Nobody has seen this yet.")
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        items(list, key = { it.user.id }) { v ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Avatar(v.user.name, v.user.picture, size = 40.dp)
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(v.user.name, style = MaterialTheme.typography.titleSmall)
+                                    Text(Time.listLabel(v.viewedAt) + "  " + Time.clock(v.viewedAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { viewers = null }) { Text("Close") } },
         )
     }
 }
@@ -332,6 +368,7 @@ private fun StatusViewer(
     statuses: List<StatusDto>,
     onViewed: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onShowViewers: (String) -> Unit,
     onClose: () -> Unit,
 ) {
     var index by remember { mutableStateOf(0) }
@@ -382,6 +419,19 @@ private fun StatusViewer(
                 Box(Modifier.weight(0.65f).fillMaxHeight().clickable(interactionSource = none, indication = null) {
                     if (index < statuses.lastIndex) index++ else onClose()
                 })
+            }
+
+            if (current.isMine) {
+                Row(
+                    Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp)
+                        .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = 0.5f))
+                        .clickable { onShowViewers(current.id) }.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Visibility, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("${current.viewCount} views", color = Color.White)
+                }
             }
 
             Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {

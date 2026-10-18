@@ -13,7 +13,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
@@ -92,6 +95,15 @@ class ProfileViewModel : ViewModel() {
             AppGraph.auth.logout()
             AppGraph.socket.disconnect()
             AppGraph.session.clear()
+            AppGraph.clearCaches()
+        }
+    }
+
+    fun joinByCode(code: String, onJoined: (String) -> Unit) {
+        viewModelScope.launch {
+            AppGraph.chats.joinByCode(code)
+                .onSuccess { res -> AppGraph.chatCache[res.chat.id] = res.chat; onJoined(res.chat.id) }
+                .onFailure { e -> _state.update { it.copy(message = e.message) } }
         }
     }
 
@@ -105,8 +117,11 @@ fun ProfileScreen(nav: NavController, vm: ProfileViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val theme by AppGraph.session.themeFlow.collectAsState(initial = "system")
     var confirmLogout by remember { mutableStateOf(false) }
+    var showJoin by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); vm.consumeMessage() } }
 
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding()
@@ -148,6 +163,13 @@ fun ProfileScreen(nav: NavController, vm: ProfileViewModel = viewModel()) {
             }
         }
 
+        SectionLabel("Groups & privacy")
+        SectionCard {
+            ActionRow(Icons.Filled.GroupAdd, "Join with invite code") { showJoin = true }
+            Spacer(Modifier.height(4.dp))
+            ActionRow(Icons.Filled.Block, "Blocked users") { nav.navigate(Routes.BLOCKED) }
+        }
+
         SectionLabel("About")
         SectionCard {
             InfoRow("Server", BuildConfig.BASE_URL)
@@ -168,6 +190,29 @@ fun ProfileScreen(nav: NavController, vm: ProfileViewModel = viewModel()) {
             }
         }
         Spacer(Modifier.height(32.dp))
+    }
+
+    Box(Modifier.fillMaxSize()) { SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)) }
+
+    if (showJoin) {
+        var code by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showJoin = false },
+            title = { Text("Join with invite code") },
+            text = {
+                OutlinedTextField(
+                    value = code, onValueChange = { code = it },
+                    placeholder = { Text("Paste the code") }, singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = code.isNotBlank(),
+                    onClick = { showJoin = false; vm.joinByCode(code) { id -> nav.navigate(Routes.chat(id)) } },
+                ) { Text("Join") }
+            },
+            dismissButton = { TextButton(onClick = { showJoin = false }) { Text("Cancel") } },
+        )
     }
 
     if (confirmLogout) {
@@ -204,6 +249,19 @@ private fun ThemeChoice(label: String, icon: ImageVector, selected: Boolean, mod
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun ActionRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(14.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

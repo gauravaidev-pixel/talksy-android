@@ -44,6 +44,7 @@ import com.talksy.app.ui.screens.chats.ChatsViewModel
 import com.talksy.app.ui.screens.groups.NewGroupScreen
 import com.talksy.app.ui.screens.login.LoginScreen
 import com.talksy.app.ui.screens.polls.CreatePollScreen
+import com.talksy.app.ui.screens.profile.BlockedScreen
 import com.talksy.app.ui.screens.profile.EditProfileScreen
 import com.talksy.app.ui.screens.profile.ProfileScreen
 import com.talksy.app.ui.screens.status.StatusScreen
@@ -54,6 +55,7 @@ object Routes {
     const val STATUS = "status"
     const val PROFILE = "profile"
     const val EDIT_PROFILE = "editprofile"
+    const val BLOCKED = "blocked"
     const val CHAT = "chat/{chatId}"
     const val INFO = "info/{chatId}"
     const val NEW_CHAT = "newchat"
@@ -157,6 +159,7 @@ private fun MainShell() {
             composable(Routes.STATUS) { StatusScreen() }
             composable(Routes.PROFILE) { ProfileScreen(nav) }
             composable(Routes.EDIT_PROFILE) { EditProfileScreen(nav) }
+            composable(Routes.BLOCKED) { BlockedScreen(nav) }
             composable(Routes.NEW_CHAT) { com.talksy.app.ui.screens.chats.NewChatScreen(nav) }
             composable(Routes.NEW_GROUP) { NewGroupScreen(nav) }
             composable(

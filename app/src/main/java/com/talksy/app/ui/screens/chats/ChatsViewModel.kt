@@ -27,6 +27,12 @@ class ChatsViewModel : ViewModel() {
     private var refreshJob: Job? = null
 
     init {
+        // Cold start: paint the last known chat list from disk immediately, then refresh from the network.
+        val cached = AppGraph.disk.loadChats()
+        if (cached.isNotEmpty()) {
+            cached.forEach { AppGraph.chatCache[it.id] = it }
+            _state.value = _state.value.copy(loading = false, chats = cached)
+        }
         viewModelScope.launch {
             _state.value = _state.value.copy(myId = AppGraph.session.userIdFlow.first() ?: "")
         }
@@ -57,7 +63,53 @@ class ChatsViewModel : ViewModel() {
 
     private suspend fun fetch() {
         AppGraph.chats.list()
-            .onSuccess { _state.value = _state.value.copy(loading = false, chats = it.chats, error = null) }
+            .onSuccess {
+                it.chats.forEach { chat -> AppGraph.chatCache[chat.id] = chat }
+                AppGraph.disk.saveChats(it.chats)
+                _state.value = _state.value.copy(loading = false, chats = it.chats, error = null)
+                prefetch(it.chats)
+            }
             .onFailure { _state.value = _state.value.copy(loading = false, error = it.message) }
+    }
+
+    /** Warm the message cache of the top chats so opening them is instant. `peek` = does not mark as read. */
+    private fun prefetch(chats: List<ChatDto>) {
+        chats.take(6).forEach { chat ->
+            if (AppGraph.messageCache[chat.id] == null) {
+                viewModelScope.launch {
+                    AppGraph.messages.list(chat.id, peek = true).onSuccess { res ->
+                        AppGraph.messageCache[chat.id] = res.messages
+                        AppGraph.disk.saveMessages(chat.id, res.messages)
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- per-chat actions
+
+    fun togglePin(chat: ChatDto) = act { AppGraph.chats.setPinned(chat.id, !chat.isPinned) }
+    fun mute(chat: ChatDto, hours: Int) = act { AppGraph.chats.mute(chat.id, hours) }
+    fun clear(chat: ChatDto) = act { AppGraph.chats.clear(chat.id) }
+    fun hide(chat: ChatDto) = act { AppGraph.chats.hide(chat.id) }
+
+    private fun act(block: suspend () -> Result<*>) {
+        viewModelScope.launch {
+            block().onFailure { e -> _state.value = _state.value.copy(error = e.message) }
+            fetch()
+        }
+    }
+
+    /** "Saved Messages" is created on first use. */
+    fun openSaved(onReady: (String) -> Unit) {
+        viewModelScope.launch {
+            AppGraph.chats.openSaved()
+                .onSuccess { onReady(it.chat.id); refresh(silent = true) }
+                .onFailure { e -> _state.value = _state.value.copy(error = e.message) }
+        }
+    }
+
+    fun consumeError() {
+        _state.value = _state.value.copy(error = null)
     }
 }

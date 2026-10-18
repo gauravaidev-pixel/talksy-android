@@ -1,7 +1,9 @@
 package com.talksy.app.ui.screens.chats
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,7 +16,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,7 +44,7 @@ import com.talksy.app.ui.components.UnreadBadge
 import com.talksy.app.ui.nav.Routes
 import com.talksy.app.util.Time
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
     val state by vm.state.collectAsState()
@@ -45,6 +52,10 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
     var searching by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf(0) } // 0 all, 1 unread, 2 groups
     var fabOpen by remember { mutableStateOf(false) }
+    var menuChat by remember { mutableStateOf<ChatDto?>(null) }
+    var confirm by remember { mutableStateOf<Pair<String, ChatDto>?>(null) }
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
 
     // Refresh whenever we come back to this screen.
     LaunchedEffect(Unit) { vm.refresh(silent = true) }
@@ -132,10 +143,56 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
                         icon = Icons.Filled.ChatBubble,
                     )
                     else -> LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+                        if (query.isBlank() && filter == 0 && state.chats.none { it.type == "saved" }) {
+                            item(key = "saved-virtual") {
+                                SavedRow { vm.openSaved { id -> nav.navigate(Routes.chat(id)) } }
+                            }
+                        }
                         items(visible, key = { it.id }) { chat ->
                             val peerId = chat.peer?.id
                             val online = peerId?.let { state.presence[it] ?: chat.peer?.isOnline } ?: false
-                            ChatRow(chat, state.myId, online) { nav.navigate(Routes.chat(chat.id)) }
+                            Box {
+                                ChatRow(
+                                    chat, state.myId, online,
+                                    onClick = { nav.navigate(Routes.chat(chat.id)) },
+                                    onLongClick = { menuChat = chat },
+                                )
+                                DropdownMenu(expanded = menuChat?.id == chat.id, onDismissRequest = { menuChat = null }) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (chat.isPinned) "Unpin" else "Pin to top") },
+                                        leadingIcon = { Icon(Icons.Filled.PushPin, null) },
+                                        onClick = { vm.togglePin(chat); menuChat = null },
+                                    )
+                                    if (chat.isMuted) {
+                                        DropdownMenuItem(
+                                            text = { Text("Unmute") },
+                                            leadingIcon = { Icon(Icons.Filled.NotificationsOff, null) },
+                                            onClick = { vm.mute(chat, 0); menuChat = null },
+                                        )
+                                    } else {
+                                        DropdownMenuItem(
+                                            text = { Text("Mute for 8 hours") },
+                                            leadingIcon = { Icon(Icons.Filled.NotificationsOff, null) },
+                                            onClick = { vm.mute(chat, 8); menuChat = null },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Mute for 1 week") },
+                                            leadingIcon = { Icon(Icons.Filled.NotificationsOff, null) },
+                                            onClick = { vm.mute(chat, 168); menuChat = null },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text("Clear history") },
+                                        leadingIcon = { Icon(Icons.Filled.DeleteSweep, null) },
+                                        onClick = { confirm = "clear" to chat; menuChat = null },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Delete chat", color = MaterialTheme.colorScheme.error) },
+                                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                                        onClick = { confirm = "delete" to chat; menuChat = null },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -157,6 +214,13 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (fabOpen) {
+                ExtendedFloatingActionButton(
+                    onClick = { fabOpen = false; vm.openSaved { id -> nav.navigate(Routes.chat(id)) } },
+                    icon = { Icon(Icons.Filled.Bookmark, contentDescription = null) },
+                    text = { Text("Saved messages") },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                )
                 ExtendedFloatingActionButton(
                     onClick = { fabOpen = false; nav.navigate(Routes.NEW_GROUP) },
                     icon = { Icon(Icons.Filled.GroupAdd, contentDescription = null) },
@@ -181,6 +245,46 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
                 Icon(if (fabOpen) Icons.Filled.Close else Icons.Filled.Edit, contentDescription = "New")
             }
         }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp))
+    }
+
+    confirm?.let { (kind, chat) ->
+        val deleting = kind == "delete"
+        AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text(if (deleting) "Delete chat?" else "Clear history?") },
+            text = {
+                Text(
+                    if (deleting) "The chat disappears from your list and your history is cleared. It comes back if someone sends a new message."
+                    else "All current messages are hidden for you. Other people keep their copy.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { if (deleting) vm.hide(chat) else vm.clear(chat); confirm = null }) {
+                    Text(if (deleting) "Delete" else "Clear", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun SavedRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Avatar("Saved", null, size = 56.dp, icon = Icons.Filled.Bookmark)
+        Spacer(Modifier.width(14.dp))
+        Column {
+            Text("Saved Messages", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Notes, links and photos just for you",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -201,25 +305,28 @@ private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChatRow(chat: ChatDto, myId: String, online: Boolean, onClick: () -> Unit) {
+private fun ChatRow(chat: ChatDto, myId: String, online: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val isGroup = chat.type == "group"
+    val isSaved = chat.type == "saved"
     val title = chat.title.ifBlank { chat.peer?.name ?: chat.name.ifBlank { "Chat" } }
     val picture = if (isGroup) chat.avatar else chat.peer?.picture
     val last = chat.lastMessage
     val unread = chat.unreadCount
 
     val preview = when {
-        last == null -> if (isGroup) "Group created" else "Say hi \uD83D\uDC4B"
+        last == null -> if (isGroup) "Group created" else if (isSaved) "Notes, links and photos just for you" else "Say hi \uD83D\uDC4B"
         else -> {
             val body = when {
+                last.kind == "voice" -> "\uD83C\uDFA4 Voice message"
                 last.text.isNotBlank() -> last.text
                 last.imageUrl.isNotBlank() -> "\uD83D\uDCF7 Photo"
                 last.kind == "poll" -> "\uD83D\uDCCA Poll"
                 else -> ""
             }
             val prefix = when {
-                last.sender.id == myId -> "You: "
+                last.sender.id == myId -> if (isSaved) "" else "You: "
                 isGroup -> last.sender.name.substringBefore(' ') + ": "
                 else -> ""
             }
@@ -228,10 +335,19 @@ private fun ChatRow(chat: ChatDto, myId: String, online: Boolean, onClick: () ->
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(title, picture, size = 56.dp, online = online && !isGroup, icon = if (isGroup && picture.isNullOrBlank()) Icons.Filled.Group else null)
+        Avatar(
+            title, picture, size = 56.dp, online = online && !isGroup && !isSaved,
+            icon = when {
+                isSaved -> Icons.Filled.Bookmark
+                isGroup && picture.isNullOrBlank() -> Icons.Filled.Group
+                else -> null
+            },
+        )
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -239,13 +355,18 @@ private fun ChatRow(chat: ChatDto, myId: String, online: Boolean, onClick: () ->
                     title,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                if (chat.isMuted) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Filled.NotificationsOff, null, Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 Text(
                     Time.listLabel(last?.createdAt ?: chat.lastMessageAt),
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (unread > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (unread > 0 && !chat.isMuted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(3.dp))
@@ -258,9 +379,13 @@ private fun ChatRow(chat: ChatDto, myId: String, online: Boolean, onClick: () ->
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                if (chat.isPinned && unread == 0) {
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Filled.PushPin, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (unread > 0) {
                     Spacer(Modifier.width(8.dp))
-                    UnreadBadge(unread)
+                    UnreadBadge(unread, muted = chat.isMuted)
                 }
             }
         }

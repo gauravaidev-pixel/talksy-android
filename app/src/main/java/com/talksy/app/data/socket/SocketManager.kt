@@ -11,6 +11,8 @@ import kotlinx.serialization.json.Json
 import org.json.JSONObject
 import java.net.URI
 
+data class ReadEvent(val chatId: String, val userId: String)
+
 data class TypingEvent(val chatId: String, val userId: String, val isTyping: Boolean)
 
 /** Realtime transport. Wraps socket.io-client and re-exposes events as flows. */
@@ -24,6 +26,9 @@ class SocketManager {
 
     private val _typing = MutableSharedFlow<TypingEvent>(extraBufferCapacity = 32)
     val typing: SharedFlow<TypingEvent> = _typing
+
+    private val _reads = MutableSharedFlow<ReadEvent>(extraBufferCapacity = 32)
+    val reads: SharedFlow<ReadEvent> = _reads
 
     /** Fired when the chat list itself changed (added to a group, removed, renamed, members changed). */
     private val _chatsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
@@ -62,6 +67,10 @@ class SocketManager {
             _typing.tryEmit(
                 TypingEvent(obj.optString("chat_id"), obj.optString("user_id"), obj.optBoolean("is_typing", true)),
             )
+        }
+        s.on("read") { args ->
+            val obj = args.firstOrNull() as? JSONObject ?: return@on
+            _reads.tryEmit(ReadEvent(obj.optString("chat_id"), obj.optString("user_id")))
         }
         for (event in listOf("chat_added", "chat_removed", "chat_updated", "members_changed")) {
             s.on(event) { _chatsChanged.tryEmit(Unit) }

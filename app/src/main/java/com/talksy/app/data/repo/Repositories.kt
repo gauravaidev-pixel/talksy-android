@@ -42,6 +42,7 @@ class UserRepository(private val api: ApiService) {
     suspend fun search(q: String) = safeCall { api.searchUsers(q) }
     suspend fun get(userId: String) = safeCall { api.getUser(userId) }
     suspend fun block(userId: String) = safeCall { api.blockUser(userId) }
+    suspend fun blocked() = safeCall { api.blockedUsers() }
 }
 
 class ChatRepository(private val api: ApiService) {
@@ -52,16 +53,33 @@ class ChatRepository(private val api: ApiService) {
     suspend fun get(chatId: String) = safeCall { api.getChat(chatId) }
     suspend fun markRead(chatId: String) = safeCall { api.markRead(chatId) }
     suspend fun leave(chatId: String, myId: String) = safeCall { api.removeMember(chatId, myId) }
+    suspend fun openSaved() = safeCall { api.openSaved() }
+    suspend fun setPinned(chatId: String, pinned: Boolean) = safeCall { api.chatSettings(chatId, ChatSettingsBody(pinned = pinned)) }
+    suspend fun mute(chatId: String, hours: Int) = safeCall { api.chatSettings(chatId, ChatSettingsBody(muteHours = hours)) }
+    suspend fun clear(chatId: String) = safeCall { api.clearChat(chatId) }
+    suspend fun hide(chatId: String) = safeCall { api.hideChat(chatId) }
+    suspend fun edit(chatId: String, name: String?, description: String?, avatar: String?) =
+        safeCall { api.editChat(chatId, EditChatBody(name, description, avatar)) }
+    suspend fun delete(chatId: String) = safeCall { api.deleteChat(chatId) }
+    suspend fun addMembers(chatId: String, ids: List<String>) = safeCall { api.addMembers(chatId, AddMembersBody(ids)) }
+    suspend fun setRole(chatId: String, userId: String, role: String) = safeCall { api.setRole(chatId, userId, RoleBody(role)) }
+    suspend fun invite(chatId: String) = safeCall { api.createInvite(chatId, InviteBody()) }
+    suspend fun joinByCode(code: String) = safeCall { api.joinByCode(code.trim()) }
 }
 
 class MessageRepository(private val api: ApiService) {
-    suspend fun list(chatId: String, before: String? = null) = safeCall { api.listMessages(chatId, before = before) }
-    suspend fun send(chatId: String, text: String?, imageUrl: String?, replyTo: String?, viewOnce: Boolean) =
-        safeCall { api.sendMessage(chatId, SendMessageBody(text, imageUrl, replyTo, viewOnce)) }
+    suspend fun list(chatId: String, before: String? = null, peek: Boolean = false) =
+        safeCall { api.listMessages(chatId, before = before, peek = if (peek) 1 else null) }
+    suspend fun send(
+        chatId: String, text: String?, imageUrl: String?, replyTo: String?, viewOnce: Boolean,
+        autoDelete: String = "never",
+    ) = safeCall { api.sendMessage(chatId, SendMessageBody(text, imageUrl, replyTo, viewOnce, autoDelete)) }
     suspend fun edit(messageId: String, text: String) = safeCall { api.editMessage(messageId, EditBody(text)) }
     suspend fun delete(messageId: String) = safeCall { api.deleteMessage(messageId) }
     suspend fun react(messageId: String, emoji: String) = safeCall { api.react(messageId, ReactionBody(emoji)) }
     suspend fun pin(messageId: String) = safeCall { api.pin(messageId) }
+    suspend fun report(messageId: String, reason: String) = safeCall { api.reportMessage(messageId, ReportBody(reason)) }
+    suspend fun search(chatId: String, q: String) = safeCall { api.searchMessages(chatId, q) }
 }
 
 class PollRepository(private val api: ApiService) {
@@ -76,9 +94,10 @@ class StatusRepository(private val api: ApiService) {
     suspend fun create(text: String?, imageUrl: String?) = safeCall { api.createStatus(StatusBody(text, imageUrl)) }
     suspend fun view(id: String) = safeCall { api.viewStatus(id) }
     suspend fun delete(id: String) = safeCall { api.deleteStatus(id) }
+    suspend fun viewers(id: String) = safeCall { api.statusViewers(id) }
 }
 
-/** Uploads a picked image (content:// uri) and returns the public URL. */
+/** Uploads a picked image (content:// uri) or a recorded voice file and returns the public URL. */
 class UploadRepository(private val api: ApiService, private val context: Context) {
     suspend fun image(uri: Uri): Result<String> = safeCall {
         val resolver = context.contentResolver
@@ -93,6 +112,16 @@ class UploadRepository(private val api: ApiService, private val context: Context
         }
         val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
         val part = MultipartBody.Part.createFormData("file", "image.$ext", body)
+        val res = api.upload(part)
+        if (!res.success || res.url.isBlank()) throw ApiError(res.error ?: "Upload failed")
+        res.url
+    }
+
+    /** Upload a local audio file (voice message). */
+    suspend fun voice(file: java.io.File): Result<String> = safeCall {
+        val bytes = file.readBytes()
+        val body = bytes.toRequestBody("audio/mp4".toMediaTypeOrNull())
+        val part = MultipartBody.Part.createFormData("file", "voice.m4a", body)
         val res = api.upload(part)
         if (!res.success || res.url.isBlank()) throw ApiError(res.error ?: "Upload failed")
         res.url

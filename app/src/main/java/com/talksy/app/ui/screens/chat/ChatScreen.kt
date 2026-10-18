@@ -1,5 +1,7 @@
 package com.talksy.app.ui.screens.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -24,7 +26,18 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -53,6 +66,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -70,6 +85,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import com.talksy.app.AppGraph
 import com.talksy.app.data.remote.dto.MessageDto
 import com.talksy.app.data.remote.dto.PollDto
 import com.talksy.app.data.remote.dto.ReplyDto
@@ -79,6 +95,8 @@ import com.talksy.app.ui.components.senderColor
 import com.talksy.app.ui.nav.Routes
 import com.talksy.app.ui.theme.extras
 import com.talksy.app.util.Time
+import com.talksy.app.util.VoicePlayer
+import com.talksy.app.util.VoiceRecorder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -103,6 +121,7 @@ private data class UiMsg(
     val reactions: Map<String, List<String>>,
     val edited: Boolean,
     val pinned: Boolean,
+    val seen: Boolean,
     val send: SendState,
     val raw: MessageDto?,
 )
@@ -116,14 +135,14 @@ private fun MessageDto.toUi(myId: String) = UiMsg(
     id = id, senderId = sender.id, senderName = sender.name, senderPicture = sender.picture,
     text = text, imageUrl = imageUrl, kind = kind, pollId = pollId, mine = sender.id == myId,
     time = Time.clock(createdAt), dayKey = Time.dayKey(createdAt), reply = replyTo,
-    reactions = reactions, edited = isEdited, pinned = isPinned, send = SendState.SENT, raw = this,
+    reactions = reactions, edited = isEdited, pinned = isPinned, seen = isSeen, send = SendState.SENT, raw = this,
 )
 
 private fun PendingMessage.toUi(myId: String) = UiMsg(
     id = localId, senderId = myId, senderName = "", senderPicture = "",
     text = text, imageUrl = imageUrl, kind = "text", pollId = null, mine = true,
     time = Time.nowClock(), dayKey = Time.todayKey(), reply = replyTo,
-    reactions = emptyMap(), edited = false, pinned = false,
+    reactions = emptyMap(), edited = false, pinned = false, seen = false,
     send = if (failed) SendState.FAILED else SendState.PENDING, raw = null,
 )
 
@@ -166,6 +185,36 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    // voice recording
+    val recorder = remember { VoiceRecorder(context) }
+    var recording by remember { mutableStateOf(false) }
+    var recSeconds by remember { mutableIntStateOf(0) }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) recording = recorder.start()
+    }
+    val startRecording: () -> Unit = {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            recording = recorder.start()
+        } else {
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    LaunchedEffect(recording) {
+        recSeconds = 0
+        while (recording) { delay(1000); recSeconds++ }
+    }
+    DisposableEffect(Unit) { onDispose { recorder.cancel(); VoicePlayer.stop() } }
+
+    // search / dialogs
+    var searchMode by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var forwardMsg by remember { mutableStateOf<MessageDto?>(null) }
+    var reportMsg by remember { mutableStateOf<MessageDto?>(null) }
+    var showDisappear by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+    LaunchedEffect(searchQuery) { delay(300); vm.search(searchQuery) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) vm.attach(uri)
@@ -173,6 +222,7 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
 
     val chat = state.chat
     val isGroup = chat?.type == "group"
+    val isSaved = chat?.type == "saved"
     val title = chat?.title?.ifBlank { null } ?: chat?.peer?.name ?: "Chat"
     val canModerate = chat?.myRole == "owner" || chat?.myRole == "admin"
 
@@ -231,19 +281,25 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
                         title,
                         if (isGroup) chat?.avatar else chat?.peer?.picture,
                         size = 42.dp,
-                        online = !isGroup && state.peerOnline,
-                        icon = if (isGroup && chat?.avatar.isNullOrBlank()) Icons.Filled.Group else null,
+                        online = !isGroup && !isSaved && state.peerOnline,
+                        icon = when {
+                            isSaved -> Icons.Filled.Bookmark
+                            isGroup && chat?.avatar.isNullOrBlank() -> Icons.Filled.Group
+                            else -> null
+                        },
                     )
                     Spacer(Modifier.width(12.dp))
                     Column {
                         Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         HeaderSubtitle(
                             typing = state.typing,
+                            who = if (isGroup) state.typingName else null,
                             text = when {
+                                isSaved -> "Notes, links and photos"
                                 isGroup -> "${chat?.memberCount ?: 0} members"
                                 else -> Time.lastSeen(state.peerOnline, state.peerLastSeen)
                             },
-                            highlight = state.typing || (!isGroup && state.peerOnline),
+                            highlight = state.typing || (!isGroup && !isSaved && state.peerOnline),
                         )
                     }
                 }
@@ -260,6 +316,52 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
                             leadingIcon = { Icon(Icons.Filled.Poll, null) },
                             onClick = { menu = false; nav.navigate(Routes.newPoll(chatId)) },
                         )
+                        DropdownMenuItem(
+                            text = { Text("Search") },
+                            leadingIcon = { Icon(Icons.Filled.Search, null) },
+                            onClick = { menu = false; searchMode = true },
+                        )
+                        if (!isSaved) {
+                            DropdownMenuItem(
+                                text = { Text(if (chat?.isMuted == true) "Unmute" else "Mute for 8 hours") },
+                                leadingIcon = { Icon(Icons.Filled.NotificationsOff, null) },
+                                onClick = { menu = false; vm.toggleMute() },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(if (state.disappear == "off") "Disappearing messages" else "Disappearing: on") },
+                            leadingIcon = { Icon(Icons.Filled.Timer, null) },
+                            onClick = { menu = false; showDisappear = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Clear history") },
+                            leadingIcon = { Icon(Icons.Filled.DeleteSweep, null) },
+                            onClick = { menu = false; confirmClear = true },
+                        )
+                    }
+                }
+            }
+        }
+
+        if (searchMode) {
+            Surface(color = MaterialTheme.colorScheme.surface) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Search in this chat") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(24.dp),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.extras.field,
+                            unfocusedContainerColor = MaterialTheme.extras.field,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                        ),
+                    )
+                    IconButton(onClick = { searchMode = false; searchQuery = ""; vm.clearSearch() }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close search")
                     }
                 }
             }
@@ -316,8 +418,43 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
                 }
             }
 
+            if (searchMode) {
+                val results = state.searchResults
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                    when {
+                        results == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Type at least 2 letters", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        results.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No messages found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        else -> LazyColumn {
+                            items(results, key = { it.id }) { r ->
+                                Column(
+                                    Modifier.fillMaxWidth().clickable {
+                                        val idx = rows.indexOfFirst { it is ChatRow.Msg && it.m.id == r.id }
+                                        searchMode = false; searchQuery = ""; vm.clearSearch()
+                                        scope.launch {
+                                            if (idx >= 0) listState.scrollToItem(idx)
+                                            else snackbar.showSnackbar("That message is older \u2013 scroll up to load it")
+                                        }
+                                    }.padding(horizontal = 16.dp, vertical = 12.dp),
+                                ) {
+                                    Row {
+                                        Text(r.sender.name, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                        Text(Time.listLabel(r.createdAt), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Text(r.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                            }
+                        }
+                    }
+                }
+            }
+
             // jump-to-latest button
-            androidx.compose.animation.AnimatedVisibility(
+            AnimatedVisibility(
                 visible = showJump,
                 enter = scaleIn() + fadeIn(),
                 exit = scaleOut() + fadeOut(),
@@ -348,6 +485,16 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
             onClearAttachment = vm::clearAttachment,
             onAttach = { picker.launch("image/*") },
             onSend = { vm.send(draft); draft = "" },
+            recording = recording,
+            recSeconds = recSeconds,
+            sendingVoice = state.sendingVoice,
+            onMic = startRecording,
+            onCancelRec = { recorder.cancel(); recording = false },
+            onSendRec = {
+                val result = recorder.stop()
+                recording = false
+                if (result != null) vm.sendVoice(result.first, result.second)
+            },
         )
     }
 
@@ -372,6 +519,7 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
                 }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outline)
                 SheetAction(Icons.AutoMirrored.Filled.Reply, "Reply") { m.raw?.let(vm::startReply); selected = null }
+                SheetAction(Icons.Filled.Share, "Forward") { forwardMsg = m.raw; selected = null }
                 if (m.text.isNotBlank()) {
                     SheetAction(Icons.Filled.ContentCopy, "Copy text") {
                         clipboard.setText(AnnotatedString(m.text)); selected = null
@@ -381,6 +529,9 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
                     SheetAction(Icons.Filled.Edit, "Edit") { m.raw?.let(vm::startEdit); selected = null }
                 }
                 SheetAction(Icons.Filled.PushPin, if (m.pinned) "Unpin" else "Pin") { m.raw?.let(vm::pin); selected = null }
+                if (!m.mine) {
+                    SheetAction(Icons.Filled.Flag, "Report", destructive = true) { reportMsg = m.raw; selected = null }
+                }
                 if (m.mine || canModerate) {
                     SheetAction(Icons.Filled.Delete, "Delete", destructive = true) {
                         confirmDelete = m.raw; selected = null
@@ -404,6 +555,105 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
         )
     }
 
+    forwardMsg?.let { m ->
+        val targets = remember(chatId) {
+            AppGraph.chatCache.values.filter { it.id != chatId }.sortedByDescending { it.lastMessageAt ?: "" }
+        }
+        AlertDialog(
+            onDismissRequest = { forwardMsg = null },
+            title = { Text("Forward to") },
+            text = {
+                if (targets.isEmpty()) {
+                    Text("Open the Chats tab once so your chats can be listed here.")
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                        items(targets, key = { it.id }) { c ->
+                            val name = c.title.ifBlank { c.peer?.name ?: c.name }
+                            Row(
+                                Modifier.fillMaxWidth().clickable { vm.forward(m, listOf(c.id)); forwardMsg = null }.padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Avatar(
+                                    name, if (c.type == "group") c.avatar else c.peer?.picture, size = 40.dp,
+                                    icon = when {
+                                        c.type == "saved" -> Icons.Filled.Bookmark
+                                        c.type == "group" && c.avatar.isBlank() -> Icons.Filled.Group
+                                        else -> null
+                                    },
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { forwardMsg = null }) { Text("Cancel") } },
+        )
+    }
+
+    reportMsg?.let { m ->
+        var reason by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { reportMsg = null },
+            title = { Text("Report message") },
+            text = {
+                OutlinedTextField(
+                    value = reason, onValueChange = { reason = it },
+                    placeholder = { Text("What is wrong with it?") }, maxLines = 3,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.report(m, reason.ifBlank { "No reason" }); reportMsg = null }) { Text("Report") }
+            },
+            dismissButton = { TextButton(onClick = { reportMsg = null }) { Text("Cancel") } },
+        )
+    }
+
+    if (showDisappear) {
+        val options = listOf("off" to "Off", "1day" to "24 hours", "1week" to "7 days", "1month" to "30 days")
+        AlertDialog(
+            onDismissRequest = { showDisappear = false },
+            title = { Text("Disappearing messages") },
+            text = {
+                Column {
+                    Text(
+                        "New messages you send in this chat will be deleted after the chosen time.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    options.forEach { (value, label) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { vm.setDisappear(value); showDisappear = false },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = state.disappear == value, onClick = { vm.setDisappear(value); showDisappear = false })
+                            Text(label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showDisappear = false }) { Text("Close") } },
+        )
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear history?") },
+            text = { Text("All current messages are hidden for you. Other people keep their copy.") },
+            confirmButton = {
+                TextButton(onClick = { confirmClear = false; vm.clearHistory() }) {
+                    Text("Clear", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+        )
+    }
+
     viewerImage?.let { url ->
         Dialog(onDismissRequest = { viewerImage = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
@@ -419,7 +669,7 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
 // ------------------------------------------------------------------ small helpers
 
 @Composable
-private fun HeaderSubtitle(typing: Boolean, text: String, highlight: Boolean) {
+private fun HeaderSubtitle(typing: Boolean, text: String, highlight: Boolean, who: String? = null) {
     var dots by remember { mutableIntStateOf(0) }
     LaunchedEffect(typing) {
         while (typing) {
@@ -429,7 +679,7 @@ private fun HeaderSubtitle(typing: Boolean, text: String, highlight: Boolean) {
         dots = 0
     }
     Text(
-        if (typing) "typing" + ".".repeat(dots) else text,
+        if (typing) (if (who != null) "$who is typing" else "typing") + ".".repeat(dots) else text,
         style = MaterialTheme.typography.bodySmall,
         color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
@@ -617,7 +867,9 @@ private fun Bubble(
     val bg = if (m.mine) ex.bubbleOut else ex.bubbleIn
     val fg = if (m.mine) ex.onBubbleOut else ex.onBubbleIn
     val metaColor = if (m.mine) ex.metaOut else ex.metaIn
-    val hasImage = m.imageUrl.isNotBlank()
+    val isVoice = m.kind == "voice" || (m.imageUrl.isNotBlank() &&
+        listOf(".m4a", ".ogg", ".webm", ".mp3", ".wav").any { m.imageUrl.substringBefore('?').lowercase().endsWith(it) })
+    val hasImage = m.imageUrl.isNotBlank() && !isVoice
     val imageOnly = hasImage && m.text.isBlank()
     val uriHandler = LocalUriHandler.current
 
@@ -645,6 +897,11 @@ private fun Bubble(
             }
             m.reply?.let { ReplyQuote(it, m.mine, Modifier.padding(horizontal = if (hasImage) 6.dp else 0.dp).padding(bottom = 4.dp)) }
 
+            if (isVoice) {
+                VoiceContent(m.imageUrl, m.text, fg, m.mine)
+                Box(Modifier.align(Alignment.End)) { MetaRow(m, metaColor) }
+            }
+
             if (hasImage) {
                 Box {
                     AsyncImage(
@@ -665,7 +922,7 @@ private fun Bubble(
                 }
             }
 
-            if (m.text.isNotBlank()) {
+            if (m.text.isNotBlank() && !isVoice) {
                 val pad = if (m.mine) "\u00A0".repeat(if (m.edited) 18 else 11) else "\u00A0".repeat(if (m.edited) 14 else 7)
                 val hasUrl = UrlRegex.containsMatchIn(m.text)
                 Box(Modifier.padding(horizontal = if (hasImage) 8.dp else 0.dp).padding(top = if (hasImage) 4.dp else 0.dp, bottom = if (hasImage) 2.dp else 0.dp)) {
@@ -743,7 +1000,9 @@ private fun MetaRow(m: UiMsg, color: Color) {
             when (m.send) {
                 SendState.PENDING -> Icon(Icons.Filled.Schedule, null, tint = color, modifier = Modifier.size(13.dp))
                 SendState.FAILED -> Icon(Icons.Filled.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(13.dp))
-                SendState.SENT -> Icon(Icons.Filled.Check, null, tint = if (color == Color.White) color else MaterialTheme.extras.tick, modifier = Modifier.size(14.dp))
+                SendState.SENT ->
+                    if (m.seen) Icon(Icons.Filled.DoneAll, null, tint = if (color == Color.White) color else MaterialTheme.extras.tick, modifier = Modifier.size(16.dp))
+                    else Icon(Icons.Filled.Check, null, tint = color, modifier = Modifier.size(14.dp))
             }
         }
     }
@@ -786,6 +1045,12 @@ private fun Composer(
     onClearAttachment: () -> Unit,
     onAttach: () -> Unit,
     onSend: () -> Unit,
+    recording: Boolean,
+    recSeconds: Int,
+    sendingVoice: Boolean,
+    onMic: () -> Unit,
+    onCancelRec: () -> Unit,
+    onSendRec: () -> Unit,
 ) {
     val canSend = draft.isNotBlank() || attachment != null
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding()) {
@@ -821,48 +1086,114 @@ private fun Composer(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
-            TextField(
-                value = draft,
-                onValueChange = onDraft,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Message") },
-                shape = RoundedCornerShape(26.dp),
-                maxLines = 6,
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Default),
-                leadingIcon = null,
-                trailingIcon = {
-                    IconButton(onClick = onAttach, enabled = !uploading) {
-                        Icon(Icons.Filled.AttachFile, contentDescription = "Attach photo")
+        if (recording) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(26.dp),
+                    color = MaterialTheme.extras.field,
+                    modifier = Modifier.weight(1f).height(52.dp),
+                ) {
+                    Row(Modifier.padding(start = 18.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.error))
+                        Spacer(Modifier.width(10.dp))
+                        Text(String.format("%d:%02d", recSeconds / 60, recSeconds % 60), style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Recording\u2026", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                        IconButton(onClick = onCancelRec) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Cancel recording", tint = MaterialTheme.colorScheme.error)
+                        }
                     }
-                },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.extras.field,
-                    unfocusedContainerColor = MaterialTheme.extras.field,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                ),
-            )
-            AnimatedVisibility(visible = canSend, enter = scaleIn() + fadeIn(), exit = scaleOut() + fadeOut()) {
-                Row {
-                    Spacer(Modifier.width(8.dp))
-                    FilledIconButton(
-                        onClick = onSend,
-                        enabled = !uploading,
-                        modifier = Modifier.size(52.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
+                }
+                Spacer(Modifier.width(8.dp))
+                FilledIconButton(
+                    onClick = onSendRec,
+                    modifier = Modifier.size(52.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send voice message") }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
+                TextField(
+                    value = draft,
+                    onValueChange = onDraft,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Message") },
+                    shape = RoundedCornerShape(26.dp),
+                    maxLines = 6,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Default),
+                    leadingIcon = null,
+                    trailingIcon = {
+                        IconButton(onClick = onAttach, enabled = !uploading) {
+                            Icon(Icons.Filled.AttachFile, contentDescription = "Attach photo")
+                        }
+                    },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.extras.field,
+                        unfocusedContainerColor = MaterialTheme.extras.field,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
+                )
+                Spacer(Modifier.width(8.dp))
+                FilledIconButton(
+                    onClick = if (canSend) onSend else onMic,
+                    enabled = !uploading && !sendingVoice,
+                    modifier = Modifier.size(52.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) {
+                    if (sendingVoice) {
+                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                    } else {
                         Icon(
-                            if (editing != null) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send",
+                            when {
+                                !canSend -> Icons.Filled.Mic
+                                editing != null -> Icons.Filled.Check
+                                else -> Icons.AutoMirrored.Filled.Send
+                            },
+                            contentDescription = if (canSend) "Send" else "Record voice message",
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ voice messages
+
+@Composable
+private fun VoiceContent(url: String, label: String, fg: Color, mine: Boolean) {
+    val playing = VoicePlayer.currentUrl == url
+    val progress = if (playing) VoicePlayer.progress else 0f
+    val seconds = remember(label) { Regex("(\\d+)").find(label)?.value?.toIntOrNull() ?: 0 }
+    Row(Modifier.widthIn(min = 220.dp).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        FilledIconButton(
+            onClick = { VoicePlayer.toggle(url) },
+            modifier = Modifier.size(42.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = if (mine) Color.White else MaterialTheme.colorScheme.primary,
+                contentColor = if (mine) MaterialTheme.extras.bubbleOut else MaterialTheme.colorScheme.onPrimary,
+            ),
+        ) {
+            Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play")
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                color = fg,
+                trackColor = fg.copy(alpha = 0.25f),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(String.format("%d:%02d", seconds / 60, seconds % 60), color = fg.copy(alpha = 0.75f), fontSize = 11.sp)
         }
     }
 }
