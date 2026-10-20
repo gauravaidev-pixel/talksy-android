@@ -467,7 +467,7 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
             }
 
             // jump-to-latest button
-            AnimatedVisibility(
+            androidx.compose.animation.AnimatedVisibility(
                 visible = showJump,
                 enter = scaleIn() + fadeIn(),
                 exit = scaleOut() + fadeOut(),
