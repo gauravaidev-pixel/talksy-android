@@ -104,7 +104,7 @@ dependencies {
     // Images
     implementation("io.coil-kt:coil-compose:2.6.0")
     // WebRTC (voice / video calls)
-    implementation("org.webrtc:google-webrtc:1.0.32006")
+    implementation("io.github.webrtc-sdk:android:125.6422.07")
 
     // Google Sign-In (Credential Manager)
     implementation("androidx.credentials:credentials:1.3.0")
