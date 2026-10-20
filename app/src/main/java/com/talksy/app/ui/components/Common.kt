@@ -1,5 +1,10 @@
 package com.talksy.app.ui.components
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -7,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -165,5 +171,32 @@ fun SectionCard(content: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
         Column(Modifier.padding(16.dp), content = content)
+    }
+}
+
+
+/** Shimmering placeholder rows (avatar + two text lines). Feels much faster than a spinner. */
+@Composable
+fun SkeletonList(rows: Int = 8, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse),
+        label = "alpha",
+    )
+    val block = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f + 0.06f * alpha)
+    Column(modifier.fillMaxSize()) {
+        repeat(rows) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(56.dp).clip(CircleShape).background(block))
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Box(Modifier.fillMaxWidth(0.45f).height(14.dp).clip(RoundedCornerShape(7.dp)).background(block))
+                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.fillMaxWidth(0.8f).height(12.dp).clip(RoundedCornerShape(6.dp)).background(block))
+                }
+            }
+        }
     }
 }

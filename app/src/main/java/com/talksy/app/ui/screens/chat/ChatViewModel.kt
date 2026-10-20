@@ -153,6 +153,7 @@ class ChatViewModel : ViewModel() {
                     if (index >= 0) updated[index] = msg else updated.add(msg)
                     st.copy(messages = updated, typing = if (msg.sender.id == st.peerId()) false else st.typing)
                 }
+                persist()
                 if (msg.sender.id != _state.value.myId) markRead()
             }
         }
@@ -213,6 +214,13 @@ class ChatViewModel : ViewModel() {
 
     private fun ChatUiState.peerId(): String? = chat?.peer?.id
 
+    /** Keep the in-memory + on-disk copy of this chat current, so reopening is instant even after a restart. */
+    private fun persist() {
+        val list = _state.value.messages
+        AppGraph.messageCache[chatId] = list
+        AppGraph.disk.saveMessages(chatId, list)
+    }
+
     /** Tell the server we've seen everything (drives the unread badges); debounced. */
     private fun markRead() {
         readJob?.cancel()
@@ -264,6 +272,7 @@ class ChatViewModel : ViewModel() {
                             else st.messages + res.message,
                         )
                     }
+                    persist()
                 }
                 .onFailure { e ->
                     _state.update { st ->

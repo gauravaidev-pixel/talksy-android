@@ -131,6 +131,12 @@ interface ApiService {
     @GET("api/status/{id}/viewers")
     suspend fun statusViewers(@Path("id") statusId: String): StatusViewersResponse
 
+    @GET("api/calls")
+    suspend fun callHistory(): CallListResponse
+
+    @GET("api/calls/ice")
+    suspend fun iceServers(): IceResponse
+
     @POST("api/chats/{id}/invite")
     suspend fun createInvite(@Path("id") chatId: String, @Body body: InviteBody): InviteResponse
 

@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 2
-        versionName = "1.4.0"
+        versionName = "1.5.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -103,6 +103,8 @@ dependencies {
 
     // Images
     implementation("io.coil-kt:coil-compose:2.6.0")
+    // WebRTC (voice / video calls)
+    implementation("org.webrtc:google-webrtc:1.0.32006")
 
     // Google Sign-In (Credential Manager)
     implementation("androidx.credentials:credentials:1.3.0")

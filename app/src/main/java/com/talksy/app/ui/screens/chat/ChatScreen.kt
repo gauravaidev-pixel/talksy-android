@@ -27,6 +27,8 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DoneAll
@@ -94,6 +96,7 @@ import com.talksy.app.ui.components.LoadingBox
 import com.talksy.app.ui.components.senderColor
 import com.talksy.app.ui.nav.Routes
 import com.talksy.app.ui.theme.extras
+import com.talksy.app.ui.screens.call.rememberCallLauncher
 import com.talksy.app.util.Time
 import com.talksy.app.util.VoicePlayer
 import com.talksy.app.util.VoiceRecorder
@@ -186,6 +189,7 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    val startCall = rememberCallLauncher()
 
     // voice recording
     val recorder = remember { VoiceRecorder(context) }
@@ -301,6 +305,15 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
                             },
                             highlight = state.typing || (!isGroup && !isSaved && state.peerOnline),
                         )
+                    }
+                }
+                val callPeer = chat?.takeIf { it.type == "direct" }?.peer
+                if (callPeer != null) {
+                    IconButton(onClick = { startCall(callPeer, false) }) {
+                        Icon(Icons.Filled.Call, contentDescription = "Voice call")
+                    }
+                    IconButton(onClick = { startCall(callPeer, true) }) {
+                        Icon(Icons.Filled.Videocam, contentDescription = "Video call")
                     }
                 }
                 Box {
@@ -454,7 +467,7 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
             }
 
             // jump-to-latest button
-            androidx.compose.animation.AnimatedVisibility(
+            AnimatedVisibility(
                 visible = showJump,
                 enter = scaleIn() + fadeIn(),
                 exit = scaleOut() + fadeOut(),

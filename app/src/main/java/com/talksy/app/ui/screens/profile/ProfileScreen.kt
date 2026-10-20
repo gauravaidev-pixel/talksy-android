@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
@@ -30,7 +31,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
+import coil.imageLoader
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -118,6 +121,12 @@ fun ProfileScreen(nav: NavController, vm: ProfileViewModel = viewModel()) {
     val theme by AppGraph.session.themeFlow.collectAsState(initial = "system")
     var confirmLogout by remember { mutableStateOf(false) }
     var showJoin by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var cacheSize by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val bytes = AppGraph.disk.sizeBytes() + (context.imageLoader.diskCache?.size ?: 0L)
+        cacheSize = if (bytes > 1_048_576) String.format("%.1f MB", bytes / 1_048_576.0) else String.format("%d KB", bytes / 1024)
+    }
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { vm.load() }
@@ -168,6 +177,16 @@ fun ProfileScreen(nav: NavController, vm: ProfileViewModel = viewModel()) {
             ActionRow(Icons.Filled.GroupAdd, "Join with invite code") { showJoin = true }
             Spacer(Modifier.height(4.dp))
             ActionRow(Icons.Filled.Block, "Blocked users") { nav.navigate(Routes.BLOCKED) }
+        }
+
+        SectionLabel("Storage")
+        SectionCard {
+            ActionRow(Icons.Filled.DeleteSweep, "Clear cache" + if (cacheSize.isNotBlank()) " ($cacheSize)" else "") {
+                AppGraph.clearCaches()
+                context.imageLoader.diskCache?.clear()
+                context.imageLoader.memoryCache?.clear()
+                cacheSize = "0 KB"
+            }
         }
 
         SectionLabel("About")

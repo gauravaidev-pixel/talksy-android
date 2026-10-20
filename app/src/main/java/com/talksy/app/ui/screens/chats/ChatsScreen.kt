@@ -37,6 +37,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavController
 import com.talksy.app.data.remote.dto.ChatDto
+import com.talksy.app.data.remote.dto.UserDto
+import kotlinx.coroutines.delay
 import com.talksy.app.ui.components.Avatar
 import com.talksy.app.ui.components.EmptyState
 import com.talksy.app.ui.components.LoadingBox
@@ -68,6 +70,13 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val showPeople = query.trim().length >= 2
+    LaunchedEffect(query) {
+        if (showPeople) { delay(300); vm.searchPeople(query) } else vm.clearPeople()
+    }
+    val existingPeerIds = state.chats.mapNotNull { it.peer?.id }.toSet()
+    val people: List<UserDto> = if (showPeople) state.people.filter { it.id !in existingPeerIds } else emptyList()
+
     val unreadChats = state.chats.count { it.unreadCount > 0 }
     val visible = state.chats.filter { chat ->
         val title = chat.title.ifBlank { chat.peer?.name ?: chat.name }
@@ -95,7 +104,7 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
                         value = query,
                         onValueChange = { query = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Search chats") },
+                        placeholder = { Text("Search chats and people") },
                         singleLine = true,
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -135,11 +144,12 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
             // ---- list
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    state.loading -> LoadingBox()
-                    visible.isEmpty() -> EmptyState(
-                        title = if (state.chats.isEmpty()) "No chats yet" else "Nothing here",
-                        subtitle = if (state.chats.isEmpty()) "Tap the pencil button to start a conversation."
-                        else "No chats match your search or filter.",
+                    state.loading -> com.talksy.app.ui.components.SkeletonList()
+                    visible.isEmpty() && people.isEmpty() -> EmptyState(
+                        title = if (showPeople) "No results" else if (state.chats.isEmpty()) "No chats yet" else "Nothing here",
+                        subtitle = if (showPeople) "Nobody on Talksy matches \"${query.trim()}\"."
+                        else if (state.chats.isEmpty()) "Tap the pencil button and search for someone to chat with."
+                        else "No chats match your filter.",
                         icon = Icons.Filled.ChatBubble,
                     )
                     else -> LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
@@ -151,7 +161,7 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
                         items(visible, key = { it.id }) { chat ->
                             val peerId = chat.peer?.id
                             val online = peerId?.let { state.presence[it] ?: chat.peer?.isOnline } ?: false
-                            Box {
+                            Box(Modifier.animateItemPlacement()) {
                                 ChatRow(
                                     chat, state.myId, online,
                                     onClick = { nav.navigate(Routes.chat(chat.id)) },
@@ -194,6 +204,23 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
                                 }
                             }
                         }
+                        if (people.isNotEmpty()) {
+                            item(key = "people-header") {
+                                Text(
+                                    "PEOPLE ON TALKSY",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(start = 18.dp, top = 16.dp, bottom = 6.dp),
+                                )
+                            }
+                            items(people, key = { "p-" + it.id }) { user ->
+                                PersonRow(user) {
+                                    query = ""; searching = false
+                                    vm.openDirect(user.id) { id -> nav.navigate(Routes.chat(id)) }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -229,9 +256,9 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
                     contentColor = MaterialTheme.colorScheme.primary,
                 )
                 ExtendedFloatingActionButton(
-                    onClick = { fabOpen = false; nav.navigate(Routes.NEW_CHAT) },
+                    onClick = { fabOpen = false; searching = true },
                     icon = { Icon(Icons.Filled.PersonAdd, contentDescription = null) },
-                    text = { Text("New chat") },
+                    text = { Text("Find people") },
                     containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary,
                 )
@@ -266,6 +293,26 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
             },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun PersonRow(user: UserDto, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Avatar(user.name, user.picture, size = 52.dp, online = user.isOnline)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(user.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                "@" + user.username + if (user.bio.isNotBlank()) " \u2022 " + user.bio else "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

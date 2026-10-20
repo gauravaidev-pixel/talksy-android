@@ -89,6 +89,11 @@ class PollRepository(private val api: ApiService) {
     suspend fun vote(pollId: String, index: Int) = safeCall { api.vote(pollId, VoteBody(index)) }
 }
 
+class CallRepository(private val api: ApiService) {
+    suspend fun history() = safeCall { api.callHistory() }
+    suspend fun ice() = safeCall { api.iceServers() }
+}
+
 class StatusRepository(private val api: ApiService) {
     suspend fun feed() = safeCall { api.statusFeed() }
     suspend fun create(text: String?, imageUrl: String?) = safeCall { api.createStatus(StatusBody(text, imageUrl)) }

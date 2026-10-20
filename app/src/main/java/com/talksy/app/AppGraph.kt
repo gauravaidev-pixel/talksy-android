@@ -37,6 +37,7 @@ object AppGraph {
     val polls by lazy { PollRepository(api) }
     val statuses by lazy { StatusRepository(api) }
     val uploads by lazy { UploadRepository(api, appContext) }
+    val calls by lazy { CallRepository(api) }
 
     fun init(context: Context) {
         if (::session.isInitialized) return

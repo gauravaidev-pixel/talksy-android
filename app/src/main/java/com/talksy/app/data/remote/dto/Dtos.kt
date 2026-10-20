@@ -167,3 +167,19 @@ data class StatusDto(
     @SerialName("viewed_at") val viewedAt: String? = null,
 )
 @Serializable data class StatusViewersResponse(val success: Boolean = false, val viewers: List<StatusViewerDto> = emptyList())
+
+@Serializable data class CallDto(
+    val id: String,
+    val video: Boolean = false,
+    val status: String = "",
+    val direction: String = "",
+    val peer: UserBrief,
+    @SerialName("created_at") val createdAt: String? = null,
+    val duration: Int = 0,
+)
+@Serializable data class CallListResponse(val success: Boolean = false, val calls: List<CallDto> = emptyList())
+@Serializable data class IceServerDto(val urls: List<String> = emptyList(), val username: String? = null, val credential: String? = null)
+@Serializable data class IceResponse(
+    val success: Boolean = false,
+    @SerialName("ice_servers") val iceServers: List<IceServerDto> = emptyList(),
+)

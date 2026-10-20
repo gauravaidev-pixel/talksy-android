@@ -42,6 +42,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.talksy.app.AppGraph
 import com.talksy.app.data.remote.dto.StatusDto
 import com.talksy.app.data.remote.dto.StatusViewerDto
@@ -67,12 +69,30 @@ class StatusViewModel : ViewModel() {
     private val _state = MutableStateFlow(StatusUiState())
     val state: StateFlow<StatusUiState> = _state
 
-    init { refresh() }
+    init {
+        // paint the last known statuses instantly, then refresh in the background
+        val cached = AppGraph.disk.loadStatuses()
+        if (cached.isNotEmpty()) _state.update { it.copy(loading = false, statuses = cached) }
+        refresh()
+    }
+
+    /** Download story images / avatars ahead of time so the viewer opens without a spinner. */
+    private fun prefetch(list: List<StatusDto>) {
+        val ctx = AppGraph.appContext
+        list.filter { !it.viewed || it.isMine }.take(12).forEach { st ->
+            if (st.imageUrl.isNotBlank()) ctx.imageLoader.enqueue(ImageRequest.Builder(ctx).data(st.imageUrl).build())
+            if (st.user.picture.isNotBlank()) ctx.imageLoader.enqueue(ImageRequest.Builder(ctx).data(st.user.picture).build())
+        }
+    }
 
     fun refresh() {
         viewModelScope.launch {
             AppGraph.statuses.feed()
-                .onSuccess { res -> _state.update { it.copy(loading = false, statuses = res.statuses) } }
+                .onSuccess { res ->
+                    AppGraph.disk.saveStatuses(res.statuses)
+                    _state.update { it.copy(loading = false, statuses = res.statuses) }
+                    prefetch(res.statuses)
+                }
                 .onFailure { e -> _state.update { it.copy(loading = false, message = e.message) } }
         }
     }
@@ -99,6 +119,9 @@ class StatusViewModel : ViewModel() {
     }
 
     fun markViewed(id: String) {
+        // update the ring immediately; the server call happens in the background
+        _state.update { st -> st.copy(statuses = st.statuses.map { if (it.id == id) it.copy(viewed = true) else it }) }
+        AppGraph.disk.saveStatuses(_state.value.statuses)
         viewModelScope.launch { AppGraph.statuses.view(id) }
     }
 
@@ -156,7 +179,7 @@ fun StatusScreen(vm: StatusViewModel = viewModel()) {
                 modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 10.dp),
             )
             when {
-                state.loading -> LoadingBox()
+                state.loading -> com.talksy.app.ui.components.SkeletonList()
                 else -> LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
                     item {
                         StatusRow(

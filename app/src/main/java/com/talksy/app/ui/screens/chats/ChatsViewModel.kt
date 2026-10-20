@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.talksy.app.AppGraph
 import com.talksy.app.data.remote.dto.ChatDto
+import com.talksy.app.data.remote.dto.UserDto
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,8 @@ data class ChatsUiState(
     val myId: String = "",
     /** Live presence overrides (userId -> online) on top of what the API returned. */
     val presence: Map<String, Boolean> = emptyMap(),
+    /** People found by the unified search (users I don't have a chat with yet). */
+    val people: List<UserDto> = emptyList(),
     val error: String? = null,
 )
 
@@ -111,5 +114,36 @@ class ChatsViewModel : ViewModel() {
 
     fun consumeError() {
         _state.value = _state.value.copy(error = null)
+    }
+
+    // ---------------------------------------------------------------- unified search (chats + everyone on Talksy)
+
+    fun searchPeople(q: String) {
+        if (q.trim().length < 2) {
+            _state.value = _state.value.copy(people = emptyList())
+            return
+        }
+        viewModelScope.launch {
+            AppGraph.users.search(q.trim()).onSuccess { res ->
+                _state.value = _state.value.copy(people = res.users.filter { it.id != _state.value.myId })
+            }
+        }
+    }
+
+    fun clearPeople() {
+        _state.value = _state.value.copy(people = emptyList())
+    }
+
+    /** Open (or create) the 1-to-1 chat with someone found in search. */
+    fun openDirect(userId: String, onReady: (String) -> Unit) {
+        viewModelScope.launch {
+            AppGraph.chats.openDirect(userId)
+                .onSuccess { res ->
+                    AppGraph.chatCache[res.chat.id] = res.chat
+                    onReady(res.chat.id)
+                    refresh(silent = true)
+                }
+                .onFailure { e -> _state.value = _state.value.copy(error = e.message) }
+        }
     }
 }

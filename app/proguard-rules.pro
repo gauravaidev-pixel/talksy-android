@@ -15,3 +15,7 @@
 # Socket.IO
 -dontwarn io.socket.**
 -keep class io.socket.** { *; }
+
+# WebRTC (JNI)
+-keep class org.webrtc.** { *; }
+-dontwarn org.webrtc.**

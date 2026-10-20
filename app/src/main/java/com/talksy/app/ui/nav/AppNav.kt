@@ -4,13 +4,17 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.DonutLarge
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.DonutLarge
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Badge
@@ -40,6 +44,8 @@ import com.talksy.app.AppGraph
 import com.talksy.app.ui.screens.chat.ChatInfoScreen
 import com.talksy.app.ui.screens.chat.ChatScreen
 import com.talksy.app.ui.screens.chats.ChatsScreen
+import com.talksy.app.ui.screens.call.CallOverlay
+import com.talksy.app.ui.screens.calls.CallsScreen
 import com.talksy.app.ui.screens.chats.ChatsViewModel
 import com.talksy.app.ui.screens.groups.NewGroupScreen
 import com.talksy.app.ui.screens.login.LoginScreen
@@ -48,11 +54,13 @@ import com.talksy.app.ui.screens.profile.BlockedScreen
 import com.talksy.app.ui.screens.profile.EditProfileScreen
 import com.talksy.app.ui.screens.profile.ProfileScreen
 import com.talksy.app.ui.screens.status.StatusScreen
+import com.talksy.app.ui.screens.status.StatusViewModel
 
 object Routes {
     const val LOGIN = "login"
     const val CHATS = "chats"
     const val STATUS = "status"
+    const val CALLS = "calls"
     const val PROFILE = "profile"
     const val EDIT_PROFILE = "editprofile"
     const val BLOCKED = "blocked"
@@ -88,6 +96,7 @@ private data class Tab(
 private fun MainShell() {
     val nav = rememberNavController()
     val chatsVm: ChatsViewModel = viewModel()
+    val statusVm: StatusViewModel = viewModel() // created here so statuses load in the background at app start
     val chatsState by chatsVm.state.collectAsState()
 
     // Connect the realtime socket on every cold start (it used to connect only right after login).
@@ -99,12 +108,14 @@ private fun MainShell() {
     val tabs = listOf(
         Tab(Routes.CHATS, "Chats", Icons.Outlined.ChatBubbleOutline, Icons.Filled.ChatBubble),
         Tab(Routes.STATUS, "Status", Icons.Outlined.DonutLarge, Icons.Filled.DonutLarge),
+        Tab(Routes.CALLS, "Calls", Icons.Outlined.Call, Icons.Filled.Call),
         Tab(Routes.PROFILE, "You", Icons.Outlined.Person, Icons.Filled.Person),
     )
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
     val unread = chatsState.chats.sumOf { it.unreadCount }
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -156,7 +167,8 @@ private fun MainShell() {
             popExitTransition = { slideOutHorizontally(targetOffsetX = { it / 8 }) + fadeOut() },
         ) {
             composable(Routes.CHATS) { ChatsScreen(nav, chatsVm) }
-            composable(Routes.STATUS) { StatusScreen() }
+            composable(Routes.STATUS) { StatusScreen(statusVm) }
+            composable(Routes.CALLS) { CallsScreen() }
             composable(Routes.PROFILE) { ProfileScreen(nav) }
             composable(Routes.EDIT_PROFILE) { EditProfileScreen(nav) }
             composable(Routes.BLOCKED) { BlockedScreen(nav) }
@@ -181,5 +193,7 @@ private fun MainShell() {
                 CreatePollScreen(nav, entry.arguments?.getString("chatId").orEmpty())
             }
         }
+    }
+    CallOverlay()
     }
 }
