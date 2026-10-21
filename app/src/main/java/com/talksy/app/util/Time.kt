@@ -1,39 +1,48 @@
 package com.talksy.app.util
 
-import java.text.SimpleDateFormat
-import java.util.Calendar
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
+import java.util.concurrent.ConcurrentHashMap
 
-/** Parse the backend's ISO-8601 UTC timestamps and render short, human labels. */
+/**
+ * Parse the backend's ISO-8601 UTC timestamps and render short, human labels.
+ * Fast on purpose: it runs for every visible row on every recomposition, so parsing is cached and the
+ * formatters are created once (the old version allocated a SimpleDateFormat per call).
+ */
 object Time {
-    private fun utcFormat() = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("UTC")
-    }
+    private val zone: ZoneId get() = ZoneId.systemDefault()
+    private val parsed = ConcurrentHashMap<String, Long>()
+    private val clockFmt = DateTimeFormatter.ofPattern("HH:mm")
 
-    fun parse(value: String?): Date? {
+    private fun millis(value: String?): Long? {
         if (value.isNullOrBlank()) return null
-        val cleaned = value.substringBefore('.').removeSuffix("Z")
-        return runCatching { utcFormat().parse(cleaned) }.getOrNull()
+        parsed[value]?.let { return it }
+        val ms = runCatching {
+            LocalDateTime.parse(value.substringBefore('.').removeSuffix("Z")).toInstant(ZoneOffset.UTC).toEpochMilli()
+        }.getOrNull() ?: return null
+        if (parsed.size > 4000) parsed.clear()
+        parsed[value] = ms
+        return ms
     }
 
-    private fun startOfDay(ms: Long): Long {
-        val c = Calendar.getInstance()
-        c.timeInMillis = ms
-        c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0)
-        c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0)
-        return c.timeInMillis
-    }
+    fun parse(value: String?): Date? = millis(value)?.let { Date(it) }
+
+    private fun startOfDay(ms: Long): Long =
+        Instant.ofEpochMilli(ms).atZone(zone).toLocalDate().atStartOfDay(zone).toInstant().toEpochMilli()
 
     private const val DAY = 24L * 60 * 60 * 1000
 
     fun todayKey(): Long = startOfDay(System.currentTimeMillis())
 
-    fun nowClock(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+    fun nowClock(): String = clockFmt.format(Instant.now().atZone(zone))
 
     /** Stable key for "which calendar day (local time) is this message on". */
-    fun dayKey(value: String?): Long = parse(value)?.let { startOfDay(it.time) } ?: 0L
+    fun dayKey(value: String?): Long = millis(value)?.let { startOfDay(it) } ?: 0L
 
     /** "Today" / "Yesterday" / "12 October" / "12 October 2025" for date separators. */
     fun dayLabel(dayKey: Long): String {
@@ -43,44 +52,47 @@ object Time {
             dayKey == today -> "Today"
             dayKey == today - DAY -> "Yesterday"
             else -> {
-                val sameYear = Calendar.getInstance().apply { timeInMillis = dayKey }.get(Calendar.YEAR) ==
-                    Calendar.getInstance().get(Calendar.YEAR)
-                SimpleDateFormat(if (sameYear) "d MMMM" else "d MMMM yyyy", Locale.getDefault()).format(Date(dayKey))
+                val date = Instant.ofEpochMilli(dayKey).atZone(zone).toLocalDate()
+                val sameYear = date.year == Instant.now().atZone(zone).year
+                DateTimeFormatter.ofPattern(if (sameYear) "d MMMM" else "d MMMM yyyy", Locale.getDefault()).format(date)
             }
         }
     }
 
     /** Chat-list timestamp: 14:05 today, "Yesterday", weekday this week, else "12 Oct". */
     fun listLabel(value: String?): String {
-        val date = parse(value) ?: return ""
+        val ms = millis(value) ?: return ""
         val today = startOfDay(System.currentTimeMillis())
-        val day = startOfDay(date.time)
+        val day = startOfDay(ms)
         return when {
             day == today -> clock(value)
             day == today - DAY -> "Yesterday"
-            today - day < 7 * DAY -> SimpleDateFormat("EEE", Locale.getDefault()).format(date)
-            else -> SimpleDateFormat("d MMM", Locale.getDefault()).format(date)
+            today - day < 7 * DAY ->
+                DateTimeFormatter.ofPattern("EEE", Locale.getDefault()).format(Instant.ofEpochMilli(ms).atZone(zone))
+            else -> DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()).format(Instant.ofEpochMilli(ms).atZone(zone))
         }
     }
 
     fun short(value: String?): String = listLabel(value)
 
     fun clock(value: String?): String {
-        val date = parse(value) ?: return ""
-        return SimpleDateFormat("HH:mm", Locale.getDefault()).format(date)
+        val ms = millis(value) ?: return ""
+        return clockFmt.format(Instant.ofEpochMilli(ms).atZone(zone))
     }
 
     /** "online" / "last seen just now" / "last seen 14:05" / "last seen yesterday" ... */
     fun lastSeen(online: Boolean, value: String?): String {
         if (online) return "online"
-        val date = parse(value) ?: return "last seen recently"
-        val diff = System.currentTimeMillis() - date.time
+        val ms = millis(value) ?: return "last seen recently"
+        val now = System.currentTimeMillis()
+        val diff = now - ms
+        val today = startOfDay(now)
         return when {
             diff < 60_000L -> "last seen just now"
             diff < 3_600_000L -> "last seen ${diff / 60_000L} min ago"
-            startOfDay(date.time) == startOfDay(System.currentTimeMillis()) -> "last seen today at ${clock(value)}"
-            startOfDay(date.time) == startOfDay(System.currentTimeMillis()) - DAY -> "last seen yesterday at ${clock(value)}"
-            else -> "last seen " + SimpleDateFormat("d MMM", Locale.getDefault()).format(date)
+            startOfDay(ms) == today -> "last seen today at ${clock(value)}"
+            startOfDay(ms) == today - DAY -> "last seen yesterday at ${clock(value)}"
+            else -> "last seen " + DateTimeFormatter.ofPattern("d MMM", Locale.getDefault()).format(Instant.ofEpochMilli(ms).atZone(zone))
         }
     }
 }

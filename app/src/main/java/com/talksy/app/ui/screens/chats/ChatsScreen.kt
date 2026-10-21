@@ -59,8 +59,8 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); vm.consumeError() } }
 
-    // Refresh whenever we come back to this screen.
-    LaunchedEffect(Unit) { vm.refresh(silent = true) }
+    // Refresh whenever we come back to this screen (the ON_RESUME observer below also fires on first composition).
+    val openChat: (String) -> Unit = remember(nav) { { id -> nav.navigate(Routes.chat(id)) } }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -164,7 +164,7 @@ fun ChatsScreen(nav: NavController, vm: ChatsViewModel) {
                             Box(Modifier.animateItemPlacement()) {
                                 ChatRow(
                                     chat, state.myId, online,
-                                    onClick = { nav.navigate(Routes.chat(chat.id)) },
+                                    onClick = { openChat(chat.id) },
                                     onLongClick = { menuChat = chat },
                                 )
                                 DropdownMenu(expanded = menuChat?.id == chat.id, onDismissRequest = { menuChat = null }) {

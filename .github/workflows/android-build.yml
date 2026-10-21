@@ -29,26 +29,29 @@ jobs:
       - name: Print signing SHA-1 (use this in Google Cloud Console)
         run: gradle :app:signingReport --no-daemon
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+      - name: Build APKs (release + debug)
+        run: gradle assembleRelease assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK (artifact)
+      - name: Upload APKs (artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: talksy-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: talksy-apks
+          path: app/build/outputs/apk/*/*.apk
           if-no-files-found: error
 
-      - name: Publish APK to GitHub Releases
+      - name: Publish APKs to GitHub Releases
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: talksy-latest
           name: Talksy - latest APK
           body: |
-            Auto-built debug APK for the Talksy Android app.
-            Download below and install on your phone.
-          files: app/build/outputs/apk/debug/app-debug.apk
+            Talksy Android app.
+            - app-release.apk  : recommended (R8 optimised, smoother, smaller)
+            - app-debug.apk    : debug build
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/debug/app-debug.apk
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

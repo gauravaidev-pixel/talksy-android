@@ -38,8 +38,10 @@ class CallsViewModel : ViewModel() {
     val state: StateFlow<CallsUiState> = _state
 
     init {
-        val cached = AppGraph.disk.loadCalls()
-        if (cached.isNotEmpty()) _state.value = CallsUiState(loading = false, calls = cached)
+        viewModelScope.launch {
+            val cached = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { AppGraph.disk.loadCalls() }
+            if (cached.isNotEmpty() && _state.value.calls.isEmpty()) _state.value = CallsUiState(loading = false, calls = cached)
+        }
         refresh()
     }
 

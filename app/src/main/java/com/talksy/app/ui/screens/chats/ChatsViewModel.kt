@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.talksy.app.AppGraph
 import com.talksy.app.data.remote.dto.ChatDto
 import com.talksy.app.data.remote.dto.UserDto
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,10 +33,12 @@ class ChatsViewModel : ViewModel() {
 
     init {
         // Cold start: paint the last known chat list from disk immediately, then refresh from the network.
-        val cached = AppGraph.disk.loadChats()
-        if (cached.isNotEmpty()) {
-            cached.forEach { AppGraph.chatCache[it.id] = it }
-            _state.value = _state.value.copy(loading = false, chats = cached)
+        viewModelScope.launch {
+            val cached = withContext(Dispatchers.IO) { AppGraph.disk.loadChats() }
+            if (cached.isNotEmpty() && _state.value.chats.isEmpty()) {
+                cached.forEach { AppGraph.chatCache[it.id] = it }
+                _state.value = _state.value.copy(loading = false, chats = cached)
+            }
         }
         viewModelScope.launch {
             _state.value = _state.value.copy(myId = AppGraph.session.userIdFlow.first() ?: "")
@@ -64,7 +68,24 @@ class ChatsViewModel : ViewModel() {
         viewModelScope.launch { fetch() }
     }
 
+    private var fetching = false
+    private var fetchAgain = false
+
+    /** Only one list request at a time; bursts of events collapse into a single follow-up request. */
     private suspend fun fetch() {
+        if (fetching) { fetchAgain = true; return }
+        fetching = true
+        try {
+            do {
+                fetchAgain = false
+                fetchOnce()
+            } while (fetchAgain)
+        } finally {
+            fetching = false
+        }
+    }
+
+    private suspend fun fetchOnce() {
         AppGraph.chats.list()
             .onSuccess {
                 it.chats.forEach { chat -> AppGraph.chatCache[chat.id] = chat }

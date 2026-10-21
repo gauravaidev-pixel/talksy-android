@@ -52,7 +52,9 @@ import com.talksy.app.ui.components.EmptyState
 import com.talksy.app.ui.components.LoadingBox
 import com.talksy.app.ui.components.SectionLabel
 import com.talksy.app.util.Time
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -71,8 +73,12 @@ class StatusViewModel : ViewModel() {
 
     init {
         // paint the last known statuses instantly, then refresh in the background
-        val cached = AppGraph.disk.loadStatuses()
-        if (cached.isNotEmpty()) _state.update { it.copy(loading = false, statuses = cached) }
+        viewModelScope.launch {
+            val cached = withContext(Dispatchers.IO) { AppGraph.disk.loadStatuses() }
+            if (cached.isNotEmpty() && _state.value.statuses.isEmpty()) {
+                _state.update { it.copy(loading = false, statuses = cached) }
+            }
+        }
         refresh()
     }
 

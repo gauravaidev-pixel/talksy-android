@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 
 private val Context.dataStore by preferencesDataStore(name = "talksy_session")
 
@@ -40,6 +41,20 @@ class SessionStore(private val context: Context) {
     suspend fun load() {
         accessToken = context.dataStore.data.first()[Keys.ACCESS]
     }
+
+    // ---- used from OkHttp threads (never the main thread), so blocking is fine ----
+
+    /** The access token, loading it from disk first if the async warm-up hasn't finished yet. */
+    fun tokenBlocking(): String? = accessToken ?: runBlocking { load(); accessToken }
+
+    fun refreshTokenBlocking(): String? = runBlocking { context.dataStore.data.first()[Keys.REFRESH] }
+
+    fun saveAccessBlocking(token: String) = runBlocking {
+        accessToken = token
+        context.dataStore.edit { it[Keys.ACCESS] = token }
+    }
+
+    fun clearBlocking() = runBlocking { clear() }
 
     suspend fun save(access: String, refresh: String, userId: String, name: String, username: String, picture: String) {
         accessToken = access

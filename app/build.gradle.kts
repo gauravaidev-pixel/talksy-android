@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 2
-        versionName = "1.5.0"
+        versionName = "1.6.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -47,6 +47,8 @@ android {
             buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${prop("TALKSY_GOOGLE_WEB_CLIENT_ID", "")}\"")
         }
         release {
+            // signed with the same key as debug so `assembleRelease` gives an installable, MUCH smoother APK
+            signingConfig = signingConfigs.getByName("devdebug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

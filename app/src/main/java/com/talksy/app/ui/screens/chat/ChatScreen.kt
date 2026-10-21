@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -106,8 +107,15 @@ import kotlin.math.roundToInt
 
 // ------------------------------------------------------------------ UI models
 
+/** Wraps an unstable object (the ViewModel) so lambdas capturing it can be remembered and rows can skip recomposition. */
+@Immutable
+private class StableRef<T>(val value: T)
+
+
 private enum class SendState { SENT, PENDING, FAILED }
 
+/** Immutable snapshot of a message for display. @Immutable lets Compose skip rows that did not change. */
+@Immutable
 private data class UiMsg(
     val id: String,
     val senderId: String,
@@ -130,7 +138,10 @@ private data class UiMsg(
 )
 
 private sealed interface ChatRow {
+    @Immutable
     data class Day(val dayKey: Long) : ChatRow
+
+    @Immutable
     data class Msg(val m: UiMsg, val first: Boolean, val last: Boolean) : ChatRow
 }
 
@@ -177,6 +188,7 @@ private val QuickReactions = listOf("\u2764\uFE0F", "\uD83D\uDC4D", "\uD83D\uDE0
 fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel()) {
     LaunchedEffect(chatId) { vm.start(chatId) }
     val state by vm.state.collectAsState()
+    val h = remember(vm) { StableRef(vm) }
     val extras = MaterialTheme.extras
 
     var draft by rememberSaveable { mutableStateOf("") }
@@ -412,17 +424,17 @@ fun ChatScreen(nav: NavController, chatId: String, vm: ChatViewModel = viewModel
                                 val m = row.m
                                 if (m.kind == "poll") {
                                     val poll = m.pollId?.let { state.polls[it] }
-                                    if (poll != null) PollCard(poll) { vm.vote(poll.id, it) }
+                                    if (poll != null) PollCard(poll) { h.value.vote(poll.id, it) }
                                 } else {
                                     MessageRow(
                                         item = row,
                                         isGroup = isGroup,
                                         onLongPress = { if (m.send == SendState.SENT) selected = m },
-                                        onSwipeReply = { m.raw?.let(vm::startReply) },
+                                        onSwipeReply = { m.raw?.let { raw -> h.value.startReply(raw) } },
                                         onImage = { viewerImage = it },
-                                        onReact = { emoji -> m.raw?.let { vm.react(it, emoji) } },
-                                        onRetry = { vm.retry(m.id) },
-                                        onDiscard = { vm.discard(m.id) },
+                                        onReact = { emoji -> m.raw?.let { raw -> h.value.react(raw, emoji) } },
+                                        onRetry = { h.value.retry(m.id) },
+                                        onDiscard = { h.value.discard(m.id) },
                                     )
                                 }
                             }
@@ -700,29 +712,34 @@ private fun HeaderSubtitle(typing: Boolean, text: String, highlight: Boolean, wh
 }
 
 /** Subtle gradient + faint doodle pattern, like Telegram's default wallpaper. */
-private fun Modifier.wallpaper(top: Color, bottom: Color, dark: Boolean): Modifier = drawBehind {
-    drawRect(Brush.verticalGradient(listOf(top, bottom)))
-    val step = 64.dp.toPx()
+private fun Modifier.wallpaper(top: Color, bottom: Color, dark: Boolean): Modifier = drawWithCache {
+    val brush = Brush.verticalGradient(listOf(top, bottom))
     val ink = if (dark) Color.White.copy(alpha = 0.035f) else Color.White.copy(alpha = 0.22f)
+    val stroke = androidx.compose.ui.graphics.drawscope.Stroke(1.6.dp.toPx())
+    val step = 64.dp.toPx()
+    val r = 4.dp.toPx()
+    val pattern = Path()
     var row = 0
     var y = step / 2
     while (y < size.height) {
         var x = if (row % 2 == 0) step / 2 else step
         while (x < size.width) {
-            val k = ((x / step).toInt() + row) % 3
-            when (k) {
-                0 -> drawCircle(ink, radius = 4.dp.toPx(), center = Offset(x, y), style = androidx.compose.ui.graphics.drawscope.Stroke(1.6.dp.toPx()))
+            when (((x / step).toInt() + row) % 3) {
+                0 -> pattern.addOval(androidx.compose.ui.geometry.Rect(x - r, y - r, x + r, y + r))
                 1 -> {
-                    val a = 4.dp.toPx()
-                    drawLine(ink, Offset(x - a, y), Offset(x + a, y), strokeWidth = 1.6.dp.toPx())
-                    drawLine(ink, Offset(x, y - a), Offset(x, y + a), strokeWidth = 1.6.dp.toPx())
+                    pattern.moveTo(x - r, y); pattern.lineTo(x + r, y)
+                    pattern.moveTo(x, y - r); pattern.lineTo(x, y + r)
                 }
-                else -> drawCircle(ink, radius = 1.8.dp.toPx(), center = Offset(x, y))
+                else -> pattern.addOval(androidx.compose.ui.geometry.Rect(x - 1.5.dp.toPx(), y - 1.5.dp.toPx(), x + 1.5.dp.toPx(), y + 1.5.dp.toPx()))
             }
             x += step
         }
         y += step * 0.75f
         row++
+    }
+    onDrawBehind {
+        drawRect(brush)
+        drawPath(pattern, ink, style = stroke)
     }
 }
 

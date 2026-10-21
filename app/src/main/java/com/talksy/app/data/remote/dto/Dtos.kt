@@ -1,9 +1,11 @@
 package com.talksy.app.data.remote.dto
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+@Immutable
 data class UserBrief(
     val id: String,
     val name: String = "",
@@ -15,6 +17,7 @@ data class UserBrief(
 )
 
 @Serializable
+@Immutable
 data class UserDto(
     val id: String,
     val name: String = "",
@@ -26,6 +29,7 @@ data class UserDto(
 )
 
 @Serializable
+@Immutable
 data class ReplyDto(
     val id: String,
     val text: String = "",
@@ -33,6 +37,7 @@ data class ReplyDto(
 )
 
 @Serializable
+@Immutable
 data class MessageDto(
     val id: String,
     @SerialName("chat_id") val chatId: String,
@@ -52,6 +57,7 @@ data class MessageDto(
 )
 
 @Serializable
+@Immutable
 data class ChatDto(
     val id: String,
     val type: String = "direct",
@@ -71,6 +77,7 @@ data class ChatDto(
 )
 
 @Serializable
+@Immutable
 data class PollDto(
     val id: String,
     @SerialName("chat_id") val chatId: String,
@@ -88,6 +95,7 @@ data class PollDto(
 )
 
 @Serializable
+@Immutable
 data class StatusDto(
     val id: String,
     val user: UserBrief,
@@ -168,7 +176,7 @@ data class StatusDto(
 )
 @Serializable data class StatusViewersResponse(val success: Boolean = false, val viewers: List<StatusViewerDto> = emptyList())
 
-@Serializable data class CallDto(
+@Serializable @Immutable data class CallDto(
     val id: String,
     val video: Boolean = false,
     val status: String = "",

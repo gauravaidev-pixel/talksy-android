@@ -9,7 +9,9 @@ import com.talksy.app.data.remote.dto.ChatDto
 import com.talksy.app.data.remote.dto.MessageDto
 import com.talksy.app.data.remote.dto.PollDto
 import com.talksy.app.data.remote.dto.ReplyDto
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -75,7 +77,6 @@ class ChatViewModel : ViewModel() {
         // 1) Paint instantly from memory (header from the chat list, last messages from the previous visit).
         val cachedChat = AppGraph.chatCache[chatId]
         val cachedMessages = AppGraph.messageCache[chatId]
-            ?: AppGraph.disk.loadMessages(chatId)?.also { AppGraph.messageCache[chatId] = it }
         _state.update {
             it.copy(
                 chat = cachedChat ?: it.chat,
@@ -84,6 +85,17 @@ class ChatViewModel : ViewModel() {
                 peerOnline = cachedChat?.peer?.isOnline ?: it.peerOnline,
                 peerLastSeen = cachedChat?.peer?.lastSeen ?: it.peerLastSeen,
             )
+        }
+
+        if (cachedMessages == null) {
+            // cold start: read the on-disk copy without blocking the main thread
+            viewModelScope.launch {
+                val disk = withContext(Dispatchers.IO) { AppGraph.disk.loadMessages(chatId) }
+                if (disk != null && _state.value.messages.isEmpty()) {
+                    AppGraph.messageCache[chatId] = disk
+                    _state.update { it.copy(messages = disk, loading = false) }
+                }
+            }
         }
 
         // 2) Refresh in parallel. Each request updates the UI as soon as it lands
